@@ -47,6 +47,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "https://morpheus-stats-frontend.vercel.app"
     ],  # List of allowed origins
 
     allow_credentials=True,
