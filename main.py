@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
         for path in possible_paths:
             if os.path.exists(path):
                 logger.info(f"Found credentials at: {path}")
+                os.environ['GOOGLE_SHEETS_CREDENTIALS_PATH'] = path  # Store the path
                 credentials_found = True
                 break
                 
@@ -77,11 +78,22 @@ async def lifespan(app: FastAPI):
             os.makedirs(os.path.dirname(creds_path), exist_ok=True)
             with open(creds_path, 'w') as f:
                 f.write('{}')
+            os.environ['GOOGLE_SHEETS_CREDENTIALS_PATH'] = creds_path
             logger.info(f"Created placeholder credentials at {creds_path}")
-        
-        logger.info("Setting up scheduler")
-        scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
-        scheduler.start()
+
+        # Initialize cache file
+        if not os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'w') as f:
+                f.write('{}')
+            logger.info(f"Created empty cache file at {CACHE_FILE}")
+
+        try:
+            logger.info("Setting up scheduler")
+            scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
+            scheduler.start()
+        except Exception as scheduler_error:
+            logger.error(f"Scheduler error: {str(scheduler_error)}")
+            # Continue without scheduler
         
         LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
         logger.info("Application startup complete")
@@ -90,8 +102,11 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error during startup: {str(e)}", exc_info=True)
         yield  # Still yield to allow the application to start
     finally:
-        logger.info("Shutting down scheduler")
-        scheduler.shutdown()
+        try:
+            logger.info("Shutting down scheduler")
+            scheduler.shutdown()
+        except Exception as shutdown_error:
+            logger.error(f"Error during shutdown: {str(shutdown_error)}")
 
 
 app = FastAPI(lifespan=lifespan)
