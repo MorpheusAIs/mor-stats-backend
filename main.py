@@ -7,6 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import glob
 
 from helpers.capital_helpers.capital_main import get_capital_metrics
 from helpers.code_helpers.get_github_commits_metrics import get_commits_data
@@ -38,7 +39,7 @@ logger.debug("Starting application...")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global LAST_CACHE_UPDATE_TIME
-    logger.debug("Entering lifespan context manager")
+    logger.info("Starting application initialization")
     try:
         # Check for required environment variables
         required_vars = [
@@ -50,14 +51,18 @@ async def lifespan(app: FastAPI):
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
             logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
+            # Don't fail startup, just log warning
         
-                # Try multiple possible locations for credentials
+        # Try multiple possible locations for credentials
         possible_paths = [
             os.path.join(os.getcwd(), 'sheets_config', 'credentials.json'),
             '/home/site/wwwroot/sheets_config/credentials.json',
-            '/tmp/8dd411217742daf/sheets_config/credentials.json'
         ]
-
+        
+        # Add any matching tmp paths
+        tmp_paths = glob.glob('/tmp/*/sheets_config/credentials.json')
+        possible_paths.extend(tmp_paths)
+        
         credentials_found = False
         for path in possible_paths:
             if os.path.exists(path):
@@ -67,27 +72,25 @@ async def lifespan(app: FastAPI):
                 
         if not credentials_found:
             logger.warning("No credentials file found in any expected location")
-            # Create a basic credentials file
-            os.makedirs(os.path.dirname(possible_paths[0]), exist_ok=True)
-            with open(possible_paths[0], 'w') as f:
+            # Create a basic credentials file in current directory
+            creds_path = os.path.join(os.getcwd(), 'sheets_config', 'credentials.json')
+            os.makedirs(os.path.dirname(creds_path), exist_ok=True)
+            with open(creds_path, 'w') as f:
                 f.write('{}')
-            logger.info(f"Created placeholder credentials at {possible_paths[0]}")
+            logger.info(f"Created placeholder credentials at {creds_path}")
         
-        logger.debug("Setting up scheduler")
+        logger.info("Setting up scheduler")
         scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
-        logger.debug("Starting scheduler")
         scheduler.start()
         
         LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
-        logger.debug("Startup complete")
+        logger.info("Application startup complete")
         yield
-
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}", exc_info=True)
-        # Don't raise the exception - let the application start anyway
-        yield
+        yield  # Still yield to allow the application to start
     finally:
-        logger.debug("Shutting down scheduler")
+        logger.info("Shutting down scheduler")
         scheduler.shutdown()
 
 
