@@ -12,15 +12,18 @@ scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/au
          "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-SHEET_UTILS_JSON_PATH = "/home/site/wwwroot/sheets_config/credentials.json"
+GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 
-if not os.path.exists(SHEET_UTILS_JSON_PATH):
-    raise FileNotFoundError(f"Credentials file not found at {SHEET_UTILS_JSON_PATH}")
+if not GOOGLE_SHEETS_CREDENTIALS:
+    raise ValueError("GOOGLE_SHEETS_CREDENTIALS environment variable is not set")
 
 try:
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(SHEET_UTILS_JSON_PATH, scope)
+    credentials_dict = json.loads(GOOGLE_SHEETS_CREDENTIALS)
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+except json.JSONDecodeError as e:
+    raise ValueError(f"GOOGLE_SHEETS_CREDENTIALS is not valid JSON: {str(e)}")
 except Exception as e:
-    raise Exception(f"Failed to load credentials from {SHEET_UTILS_JSON_PATH}: {str(e)}")
+    raise Exception(f"Failed to create credentials: {str(e)}")
 
 gc = gspread.authorize(credentials)
 sh = gc.open_by_key(SPREADSHEET_ID)
@@ -42,9 +45,8 @@ def download_sheet(sheet_name):
 
 
 def read_sheet_to_dataframe(sheet_name):
-    worksheet = get_worksheet(sheet_name)
-    data = worksheet.get_all_values()
-    return pd.DataFrame(data[1:], columns=data[0])
+    worksheet = sh.worksheet(sheet_name)
+    return pd.DataFrame(worksheet.get_all_records())
 
 
 def append_to_sheet(sheet_name, dataframe):
