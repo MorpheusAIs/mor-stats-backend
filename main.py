@@ -40,18 +40,29 @@ async def lifespan(app: FastAPI):
     global LAST_CACHE_UPDATE_TIME
     logger.debug("Entering lifespan context manager")
     try:
-        # Startup: Initialize the cache update task
+        # Check for required environment variables
+        required_vars = [
+            'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
+            'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
+            'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY',
+        ]
+        
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        if missing_vars:
+            logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
+            
+        # Start scheduler without immediate cache update
         logger.debug("Setting up scheduler")
         scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
         logger.debug("Starting scheduler")
         scheduler.start()
-        logger.debug("Running initial cache update")
-        await update_cache_task()
+        
+        # Don't run initial cache update during startup
         LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
         logger.debug("Startup complete")
         yield
     except Exception as e:
-        logger.error(f"Error during startup: {str(e)}")
+        logger.error(f"Error during startup: {str(e)}", exc_info=True)
         raise
     finally:
         # Shutdown: Shut down the scheduler
@@ -496,7 +507,14 @@ async def get_circ_supply_by_chains():
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "env_vars_present": {
+            var: bool(os.getenv(var)) for var in [
+                'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
+                'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
+                'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY', 'SLACK_URL'
+            ]
+        }
     }
 
 
