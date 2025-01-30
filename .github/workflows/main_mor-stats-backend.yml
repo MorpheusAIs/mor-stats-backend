@@ -40,6 +40,11 @@ jobs:
           mkdir -p sheets_config
           echo "${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}" > sheets_config/credentials.json
           chmod 644 sheets_config/credentials.json
+          release.zip
+
+      - name: Make startup script executable
+        run: |
+          chmod +x startup.sh
 
       - name: Zip artifact for deployment
         run: |

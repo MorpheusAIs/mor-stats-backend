@@ -6,19 +6,19 @@ import os
 bind = "0.0.0.0:8000"
 backlog = 2048
 
-# Worker processes - use WEB_CONCURRENCY env var, or calculate based on CPU cores
-workers = int(os.getenv('WEB_CONCURRENCY', multiprocessing.cpu_count() * 2 + 1))
+# Worker processes
+workers = int(os.getenv('WEB_CONCURRENCY', '2'))  # Fixed number instead of CPU-based
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 
 # Timeout settings
-timeout = 120  # reduced from 600
-keepalive = 2  # reduced from 5
-graceful_timeout = 120
+timeout = 30  # Reduced from 120
+graceful_timeout = 30  # Reduced from 120
+keepalive = 2
 
 # Logging
 errorlog = "-"
-loglevel = "info"  # changed from debug
+loglevel = "debug"  # Changed to debug to see more info
 accesslog = "-"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
 
@@ -26,6 +26,16 @@ access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"
 max_requests = 1000
 max_requests_jitter = 50
 
-# Misc
+# Docker specific settings
+preload_app = False  # Prevent memory issues
+worker_tmp_dir = "/dev/shm"  # Use shared memory for temp files
+forwarded_allow_ips = "*"  # Trust X-Forwarded-* headers
+
+# Graceful shutdown settings
+check_config = True
 capture_output = True
-enable_stdio_inheritance = True 
+enable_stdio_inheritance = True
+
+# Signal handling
+reload_engine = "auto"
+reload_extra_files = [] 
