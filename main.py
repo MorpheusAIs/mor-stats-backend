@@ -26,18 +26,37 @@ from sheets_config.slack_notify import slack_notification
 scheduler = AsyncIOScheduler()
 LAST_CACHE_UPDATE_TIME = None
 
+# Add debug logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+logger.debug("Starting application...")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global LAST_CACHE_UPDATE_TIME
-    # Startup: Initialize the cache update task
-    scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))  # Run every 12 hours
-    scheduler.start()
-    await update_cache_task()  # Run the task immediately on startup
-    LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
-    yield
-    # Shutdown: Shut down the scheduler
-    scheduler.shutdown()
+    logger.debug("Entering lifespan context manager")
+    try:
+        # Startup: Initialize the cache update task
+        logger.debug("Setting up scheduler")
+        scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
+        logger.debug("Starting scheduler")
+        scheduler.start()
+        logger.debug("Running initial cache update")
+        await update_cache_task()
+        LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
+        logger.debug("Startup complete")
+        yield
+    except Exception as e:
+        logger.error(f"Error during startup: {str(e)}")
+        raise
+    finally:
+        # Shutdown: Shut down the scheduler
+        logger.debug("Shutting down scheduler")
+        scheduler.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)
