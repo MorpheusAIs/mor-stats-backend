@@ -1,5 +1,6 @@
 import csv
 import os
+import json
 import gspread
 import pandas as pd
 from dotenv import load_dotenv
@@ -11,33 +12,16 @@ scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/au
          "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
+GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 
-# Try multiple possible locations for the credentials file
-possible_paths = [
-    os.path.join(os.getcwd(), 'sheets_config', 'credentials.json'),
-    '/tmp/*/sheets_config/credentials.json',
-    '/home/site/wwwroot/sheets_config/credentials.json'
-]
+if not GOOGLE_SHEETS_CREDENTIALS:
+    raise ValueError("GOOGLE_SHEETS_CREDENTIALS environment variable is not set")
 
-credentials = None
-for path_pattern in possible_paths:
-    try:
-        # Handle wildcard paths
-        if '*' in path_pattern:
-            import glob
-            matching_paths = glob.glob(path_pattern)
-            if matching_paths:
-                credentials = ServiceAccountCredentials.from_json_keyfile_name(matching_paths[0], scope)
-                break
-        else:
-            if os.path.exists(path_pattern):
-                credentials = ServiceAccountCredentials.from_json_keyfile_name(path_pattern, scope)
-                break
-    except Exception as e:
-        continue
-
-if credentials is None:
-    raise FileNotFoundError("Could not find credentials.json in any of the expected locations")
+try:
+    credentials_dict = json.loads(GOOGLE_SHEETS_CREDENTIALS)
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+except json.JSONDecodeError:
+    raise ValueError("GOOGLE_SHEETS_CREDENTIALS is not valid JSON")
 
 gc = gspread.authorize(credentials)
 sh = gc.open_by_key(SPREADSHEET_ID)
