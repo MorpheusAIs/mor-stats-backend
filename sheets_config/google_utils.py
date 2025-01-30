@@ -12,16 +12,15 @@ scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/au
          "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
+SHEET_UTILS_JSON_PATH = "/home/site/wwwroot/sheets_config/credentials.json"
 
-if not GOOGLE_SHEETS_CREDENTIALS:
-    raise ValueError("GOOGLE_SHEETS_CREDENTIALS environment variable is not set")
+if not os.path.exists(SHEET_UTILS_JSON_PATH):
+    raise FileNotFoundError(f"Credentials file not found at {SHEET_UTILS_JSON_PATH}")
 
 try:
-    credentials_dict = json.loads(GOOGLE_SHEETS_CREDENTIALS)
-    credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
-except json.JSONDecodeError:
-    raise ValueError("GOOGLE_SHEETS_CREDENTIALS is not valid JSON")
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(SHEET_UTILS_JSON_PATH, scope)
+except Exception as e:
+    raise Exception(f"Failed to load credentials from {SHEET_UTILS_JSON_PATH}: {str(e)}")
 
 gc = gspread.authorize(credentials)
 sh = gc.open_by_key(SPREADSHEET_ID)
