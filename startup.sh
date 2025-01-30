@@ -4,6 +4,11 @@
 mkdir -p /dev/shm/gunicorn
 chmod 777 /dev/shm/gunicorn
 
+# Create sheets_config directory and credentials file
+mkdir -p sheets_config
+echo "$GOOGLE_SHEETS_CREDENTIALS" > sheets_config/credentials.json
+chmod 644 sheets_config/credentials.json
+
 # Set environment variables for Gunicorn
 export GUNICORN_CMD_ARGS="--config=gunicorn.conf.py"
 export PYTHONUNBUFFERED=1
