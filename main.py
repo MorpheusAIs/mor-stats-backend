@@ -51,18 +51,28 @@ async def lifespan(app: FastAPI):
         if missing_vars:
             logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
         
-        # Check for Google Sheets credentials
-        credentials_path = os.path.join(os.getcwd(), 'sheets_config', 'credentials.json')
-        if not os.path.exists(credentials_path):
-            logger.warning(f"Google Sheets credentials file not found at {credentials_path}")
-            # Create sheets_config directory if it doesn't exist
-            os.makedirs(os.path.dirname(credentials_path), exist_ok=True)
-            # Create a placeholder credentials file
-            with open(credentials_path, 'w') as f:
+                # Try multiple possible locations for credentials
+        possible_paths = [
+            os.path.join(os.getcwd(), 'sheets_config', 'credentials.json'),
+            '/home/site/wwwroot/sheets_config/credentials.json',
+            '/tmp/8dd411217742daf/sheets_config/credentials.json'
+        ]
+
+        credentials_found = False
+        for path in possible_paths:
+            if os.path.exists(path):
+                logger.info(f"Found credentials at: {path}")
+                credentials_found = True
+                break
+                
+        if not credentials_found:
+            logger.warning("No credentials file found in any expected location")
+            # Create a basic credentials file
+            os.makedirs(os.path.dirname(possible_paths[0]), exist_ok=True)
+            with open(possible_paths[0], 'w') as f:
                 f.write('{}')
-            logger.info("Created placeholder credentials file")
+            logger.info(f"Created placeholder credentials at {possible_paths[0]}")
         
-        # Start scheduler without immediate cache update
         logger.debug("Setting up scheduler")
         scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
         logger.debug("Starting scheduler")
@@ -71,6 +81,7 @@ async def lifespan(app: FastAPI):
         LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
         logger.debug("Startup complete")
         yield
+
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}", exc_info=True)
         # Don't raise the exception - let the application start anyway
