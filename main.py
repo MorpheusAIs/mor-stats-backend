@@ -50,22 +50,32 @@ async def lifespan(app: FastAPI):
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
             logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
-            
+        
+        # Check for Google Sheets credentials
+        credentials_path = os.path.join(os.getcwd(), 'sheets_config', 'credentials.json')
+        if not os.path.exists(credentials_path):
+            logger.warning(f"Google Sheets credentials file not found at {credentials_path}")
+            # Create sheets_config directory if it doesn't exist
+            os.makedirs(os.path.dirname(credentials_path), exist_ok=True)
+            # Create a placeholder credentials file
+            with open(credentials_path, 'w') as f:
+                f.write('{}')
+            logger.info("Created placeholder credentials file")
+        
         # Start scheduler without immediate cache update
         logger.debug("Setting up scheduler")
         scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
         logger.debug("Starting scheduler")
         scheduler.start()
         
-        # Don't run initial cache update during startup
         LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
         logger.debug("Startup complete")
         yield
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}", exc_info=True)
-        raise
+        # Don't raise the exception - let the application start anyway
+        yield
     finally:
-        # Shutdown: Shut down the scheduler
         logger.debug("Shutting down scheduler")
         scheduler.shutdown()
 

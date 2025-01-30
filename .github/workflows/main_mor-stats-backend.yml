@@ -64,6 +64,13 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
+      - name: Create Google Sheets credentials
+        run: |
+          mkdir -p sheets_config
+          echo "${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}" > sheets_config/credentials.json
+        env:
+          GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
