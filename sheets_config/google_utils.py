@@ -12,11 +12,32 @@ scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/au
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '..'))
-SHEET_UTILS_JSON_PATH = os.path.join(project_root, 'sheets_config', 'credentials.json')
+# Try multiple possible locations for the credentials file
+possible_paths = [
+    os.path.join(os.getcwd(), 'sheets_config', 'credentials.json'),
+    '/tmp/*/sheets_config/credentials.json',
+    '/home/site/wwwroot/sheets_config/credentials.json'
+]
 
-credentials = ServiceAccountCredentials.from_json_keyfile_name(SHEET_UTILS_JSON_PATH, scope)
+credentials = None
+for path_pattern in possible_paths:
+    try:
+        # Handle wildcard paths
+        if '*' in path_pattern:
+            import glob
+            matching_paths = glob.glob(path_pattern)
+            if matching_paths:
+                credentials = ServiceAccountCredentials.from_json_keyfile_name(matching_paths[0], scope)
+                break
+        else:
+            if os.path.exists(path_pattern):
+                credentials = ServiceAccountCredentials.from_json_keyfile_name(path_pattern, scope)
+                break
+    except Exception as e:
+        continue
+
+if credentials is None:
+    raise FileNotFoundError("Could not find credentials.json in any of the expected locations")
 
 gc = gspread.authorize(credentials)
 sh = gc.open_by_key(SPREADSHEET_ID)
