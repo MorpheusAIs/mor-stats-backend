@@ -47,9 +47,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://morpheus-stats-frontend.vercel.app"
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "https://*.vercel.app",
+        "https://morpheus-stats-frontend.vercel.app",
+        "https://mor-stats-backend-cfcfatfxejhphfg9.centralus-01.azurewebsites.net"
     ],  # List of allowed origins
-
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],  # Allow all headers
@@ -468,3 +471,8 @@ async def get_circ_supply_by_chains():
     except Exception as e:
         logger.error(f"Error fetching code in chain-wise supplies: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
