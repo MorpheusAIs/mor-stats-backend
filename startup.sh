@@ -4,6 +4,16 @@
 mkdir -p /dev/shm/gunicorn
 chmod 777 /dev/shm/gunicorn
 
+# Debug mount information
+echo "Checking mount points..."
+mount
+echo "Listing /config directory..."
+ls -la /config
+echo "Current working directory..."
+pwd
+echo "Current directory contents..."
+ls -la
+
 # Check mount directory
 if [ ! -d "/config" ]; then
     echo "Warning: Mount directory /config does not exist"
