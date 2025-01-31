@@ -557,6 +557,19 @@ async def health_check():
     }
 
 
+@app.get("/debug/check-credentials")
+async def check_credentials():
+    mounted_path = "/config/credentials.json"
+    env_var = bool(os.getenv("GOOGLE_SHEETS_CREDENTIALS"))
+    
+    return {
+        "mounted_file_exists": os.path.exists(mounted_path),
+        "mounted_file_readable": os.access(mounted_path, os.R_OK) if os.path.exists(mounted_path) else False,
+        "env_var_exists": env_var,
+        "mount_directory_contents": os.listdir("/config") if os.path.exists("/config") else []
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

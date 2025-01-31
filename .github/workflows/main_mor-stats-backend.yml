@@ -85,6 +85,12 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
+      - name: 'Verify Storage Mount'
+        run: |
+          az webapp config storage-account list \
+            --resource-group mor-metrics_group \
+            --name mor-stats-backend
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
