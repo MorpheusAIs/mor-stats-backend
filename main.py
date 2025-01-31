@@ -566,7 +566,6 @@ async def check_credentials():
         "mounted_file_exists": os.path.exists(mounted_path),
         "mounted_file_readable": os.access(mounted_path, os.R_OK) if os.path.exists(mounted_path) else False,
         "env_var_exists": env_var,
-        "mount_directory_contents": os.listdir("/config") if os.path.exists("/config") else []
     }
 
 
