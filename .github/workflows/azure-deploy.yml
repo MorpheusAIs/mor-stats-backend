@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: mor-stats-backend-bs    # Replace with your app name
-  ACR_REGISTRY_NAME: morpheusaibs        # Replace with your ACR name
+  AZURE_WEBAPP_NAME: mor-stats-backend    # Replace with your app name
+  ACR_REGISTRY_NAME: morpheusai      # Replace with your ACR name
   CONTAINER_IMAGE_NAME: mor-stats-backend   # Choose an image name
 
 jobs:
