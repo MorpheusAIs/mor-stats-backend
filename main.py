@@ -46,40 +46,22 @@ async def lifespan(app: FastAPI):
             'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
             'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
             'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY',
+            'GOOGLE_APPLICATION_CREDENTIALS'
         ]
         
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
             logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
             # Don't fail startup, just log warning
-        
-        # Try multiple possible locations for credentials
-        possible_paths = [
-            os.path.join(os.getcwd(), 'sheets_config', 'credentials.json'),
-            '/home/site/wwwroot/sheets_config/credentials.json',
-        ]
-        
-        # Add any matching tmp paths
-        tmp_paths = glob.glob('/tmp/*/sheets_config/credentials.json')
-        possible_paths.extend(tmp_paths)
-        
-        credentials_found = False
-        for path in possible_paths:
-            if os.path.exists(path):
-                logger.info(f"Found credentials at: {path}")
-                os.environ['GOOGLE_SHEETS_CREDENTIALS_PATH'] = path  # Store the path
-                credentials_found = True
-                break
-                
-        if not credentials_found:
-            logger.warning("No credentials file found in any expected location")
-            # Create a basic credentials file in current directory
-            creds_path = os.path.join(os.getcwd(), 'sheets_config', 'credentials.json')
-            os.makedirs(os.path.dirname(creds_path), exist_ok=True)
-            with open(creds_path, 'w') as f:
-                f.write('{}')
-            os.environ['GOOGLE_SHEETS_CREDENTIALS_PATH'] = creds_path
-            logger.info(f"Created placeholder credentials at {creds_path}")
+
+        # Verify GOOGLE_APPLICATION_CREDENTIALS is valid JSON if present
+        google_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if google_creds:
+            try:
+                json.loads(google_creds)
+                logger.info("Successfully validated Google credentials JSON")
+            except json.JSONDecodeError:
+                logger.warning("GOOGLE_APPLICATION_CREDENTIALS is present but contains invalid JSON")
 
         # Initialize cache file
         if not os.path.exists(CACHE_FILE):

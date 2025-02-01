@@ -21,31 +21,31 @@ MOUNTED_CREDENTIALS_PATH = "/config/credentials.json"
 FALLBACK_CREDENTIALS_PATH = os.path.join(os.getcwd(), 'sheets_config', 'credentials.json')
 
 def get_credentials():
-    # Try mounted path first
+    # Try environment variable first
+    GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if GOOGLE_APPLICATION_CREDENTIALS:
+        logger.info("Using credentials from environment variable")
+        try:
+            credentials_dict = json.loads(GOOGLE_APPLICATION_CREDENTIALS)
+            return ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse GOOGLE_APPLICATION_CREDENTIALS: {str(e)}")
+            raise
+
+    # Try mounted path as fallback
     if os.path.exists(MOUNTED_CREDENTIALS_PATH):
         logger.info(f"Using credentials from mounted path: {MOUNTED_CREDENTIALS_PATH}")
         return ServiceAccountCredentials.from_json_keyfile_name(MOUNTED_CREDENTIALS_PATH, scope)
 
-    # Try environment variable
-    GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
-    if GOOGLE_SHEETS_CREDENTIALS:
-        logger.info("Using credentials from environment variable")
-        try:
-            credentials_dict = json.loads(GOOGLE_SHEETS_CREDENTIALS)
-            return ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse GOOGLE_SHEETS_CREDENTIALS: {str(e)}")
-            raise
-
-    # Try fallback path
+    # Try fallback path as last resort
     if os.path.exists(FALLBACK_CREDENTIALS_PATH):
         logger.info(f"Using credentials from fallback path: {FALLBACK_CREDENTIALS_PATH}")
         return ServiceAccountCredentials.from_json_keyfile_name(FALLBACK_CREDENTIALS_PATH, scope)
 
     # If all attempts fail, raise error
     available_paths = {
+        "env_var": bool(GOOGLE_APPLICATION_CREDENTIALS),
         "mounted_path": os.path.exists(MOUNTED_CREDENTIALS_PATH),
-        "env_var": bool(GOOGLE_SHEETS_CREDENTIALS),
         "fallback_path": os.path.exists(FALLBACK_CREDENTIALS_PATH)
     }
     raise FileNotFoundError(f"No credentials found. Attempted paths: {available_paths}")
