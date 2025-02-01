@@ -542,7 +542,7 @@ async def health_check():
 @app.get("/debug/check-credentials")
 async def check_credentials():
     mounted_path = "/config/credentials.json"
-    env_var = bool(os.getenv("GOOGLE_SHEETS_CREDENTIALS"))
+    env_var = bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
     
     return {
         "mounted_file_exists": os.path.exists(mounted_path),

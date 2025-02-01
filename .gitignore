@@ -87,3 +87,6 @@ venv.bak/
 *.tgz
 *.zip
 *.rar
+
+# Cache
+cache.json

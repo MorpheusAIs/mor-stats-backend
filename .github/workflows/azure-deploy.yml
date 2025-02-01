@@ -1,0 +1,40 @@
+name: Deploy to Azure Web App
+
+on:
+  push:
+    branches:
+      - main  # or your default branch
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: mor-stats-backend-bs    # Replace with your app name
+  ACR_REGISTRY_NAME: morpheusaibs        # Replace with your ACR name
+  CONTAINER_IMAGE_NAME: mor-stats-backend   # Choose an image name
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Azure login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Login to Azure Container Registry
+      run: az acr login --name ${{ env.ACR_REGISTRY_NAME }}
+    
+    - name: Build and push container image
+      run: |
+        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
+        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:latest
+        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:latest
+    
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        images: ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }} 
