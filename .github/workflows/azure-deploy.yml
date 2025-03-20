@@ -2,17 +2,18 @@ name: Deploy to Azure Web App
 
 on:
   push:
-    branches:
-      - main  # or your default branch
+    branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: mor-stats-backend    # Replace with your app name
+  AZURE_WEBAPP_NAME: mor-stats-backend-docker    # Replace with your app name
+  RESOURCE_GROUP: mor-metrics_group    # Replace with your app name
   ACR_REGISTRY_NAME: morpheusai      # Replace with your ACR name
   CONTAINER_IMAGE_NAME: mor-stats-backend   # Choose an image name
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     
     steps:
@@ -28,13 +29,46 @@ jobs:
     
     - name: Build and push container image
       run: |
-        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
-        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:latest
-        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
-        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:latest
-    
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v2
-      with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
-        images: ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }} 
+        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:latest
+        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }} --all-tags
+
+  staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: 'Staging'
+    env:
+      JOB_LEVEL_ENV: "staging"
+    steps:
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Container App
+        run: |
+          az containerapp update \
+            --name ${{ env.AZURE_WEBAPP_NAME }}-${{ env.JOB_LEVEL_ENV }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
+
+  prod:
+    needs: [build, staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: 'Prod'
+    env:
+      JOB_LEVEL_ENV: "prod"
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Container App
+        run: |
+          az containerapp update \
+            --name ${{ env.AZURE_WEBAPP_NAME }}-${{ env.JOB_LEVEL_ENV }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
