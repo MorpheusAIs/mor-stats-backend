@@ -11,7 +11,7 @@ env:
   SERVICE: "stats-backend"
   RESOURCE_GROUP: mor-metrics_group
   ACR_REGISTRY_NAME: morpheusai
-  CONTAINER_IMAGE_NAME: $PROJECT-$SERVICE
+  CONTAINER_IMAGE_NAME: ${{ env.PROJECT }}-${{ env.SERVICE }}
 
 jobs:
   build:
@@ -30,8 +30,8 @@ jobs:
     
     - name: Build and push container image
       run: |
-        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:latest
-        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }} --all-tags
+        docker build . -t ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
 
   staging:
     needs: build
@@ -39,8 +39,8 @@ jobs:
     environment:
       name: 'Staging'
     env:
-      ENV: "staging"
-      FULL_SERVICE_NAME: $CONTAINER_IMAGE_NAME-$ENV
+      ENVIRONMENT: "staging"
+      FULL_SERVICE_NAME: ${{ env.CONTAINER_IMAGE_NAME }}-${{ env.ENVIRONMENT }}
     steps:
       - name: Azure login
         uses: azure/login@v1
@@ -61,8 +61,8 @@ jobs:
     environment:
       name: 'Prod'
     env:
-      ENV: "prod"
-      FULL_SERVICE_NAME: $CONTAINER_IMAGE_NAME-$ENV
+      ENVIRONMENT: "prod"
+      FULL_SERVICE_NAME: ${{ env.CONTAINER_IMAGE_NAME }}-${{ env.ENVIRONMENT }}
     steps:
       - name: Azure login
         uses: azure/login@v1
