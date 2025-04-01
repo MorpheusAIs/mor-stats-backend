@@ -7,10 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: mor-stats-backend-docker    # Replace with your app name
-  RESOURCE_GROUP: mor-metrics_group    # Replace with your app name
-  ACR_REGISTRY_NAME: morpheusai      # Replace with your ACR name
-  CONTAINER_IMAGE_NAME: mor-stats-backend   # Choose an image name
+  PROJECT: "morpheus"
+  SERVICE: "stats-backend"
+  RESOURCE_GROUP: mor-metrics_group
+  ACR_REGISTRY_NAME: morpheusai
+  CONTAINER_IMAGE_NAME: $PROJECT-$SERVICE
 
 jobs:
   build:
@@ -38,7 +39,8 @@ jobs:
     environment:
       name: 'Staging'
     env:
-      JOB_LEVEL_ENV: "staging"
+      ENV: "staging"
+      FULL_SERVICE_NAME: $CONTAINER_IMAGE_NAME-$ENV
     steps:
       - name: Azure login
         uses: azure/login@v1
@@ -48,18 +50,19 @@ jobs:
       - name: Deploy to Azure Container App
         run: |
           az containerapp update \
-            --name ${{ env.AZURE_WEBAPP_NAME }}-${{ env.JOB_LEVEL_ENV }} \
+            --name ${{ env.FULL_SERVICE_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
 
   prod:
     needs: [build, staging]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     environment:
       name: 'Prod'
     env:
-      JOB_LEVEL_ENV: "prod"
-    if: startsWith(github.ref, 'refs/tags/v')
+      ENV: "prod"
+      FULL_SERVICE_NAME: $CONTAINER_IMAGE_NAME-$ENV
     steps:
       - name: Azure login
         uses: azure/login@v1
@@ -69,6 +72,6 @@ jobs:
       - name: Deploy to Azure Container App
         run: |
           az containerapp update \
-            --name ${{ env.AZURE_WEBAPP_NAME }}-${{ env.JOB_LEVEL_ENV }} \
+            --name ${{ env.FULL_SERVICE_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_REGISTRY_NAME }}.azurecr.io/${{ env.CONTAINER_IMAGE_NAME }}:${{ github.sha }}
