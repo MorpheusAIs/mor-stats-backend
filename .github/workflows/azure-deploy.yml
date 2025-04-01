@@ -2,7 +2,7 @@ name: Deploy to Azure Web App
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, croc/ci-cd-updates]
     tags: [ 'v*' ]
   workflow_dispatch:
 
