@@ -36,3 +36,27 @@ def slack_notification(message):
         logger.info(f"Failed to send Slack notification: {response.status_code}, {response.text}")
     else:
         logger.info("Slack notification sent successfully")
+
+def slack_notification_cron(message):
+    slack_url = SLACK_URL
+    slack_data = {
+        "username": "cron-job-processor",
+        "icon_emoji": ":satellite_antenna:",
+        "channel": NOTIFICATION_CHANNEL,
+        "attachments": [
+            {
+                "color": "#9733EE",
+                "fields": [
+                    {
+                        "value": message,
+                        "short": "false",
+                    }
+                ]
+            }
+        ]
+    }
+    byte_length = str(sys.getsizeof(slack_data))
+    headers = {'Content-Type': "application/json", 'Content-Length': byte_length}
+    response = requests.post(slack_url, data=json.dumps(slack_data), headers=headers)
+    if response.status_code != 200:
+        raise Exception(response.status_code, response.text)
