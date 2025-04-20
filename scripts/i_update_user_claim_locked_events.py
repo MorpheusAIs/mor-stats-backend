@@ -1,12 +1,10 @@
 import logging
-import os
 from datetime import datetime
 from web3 import Web3
 import pandas as pd
-from configuration.config import ETH_RPC_URL, distribution_contract
-from sheet_config.google_utils import (
-    download_sheet, append_new_data, clear_and_upload_new_records
-)
+
+from app.core.config import ETH_RPC_URL, distribution_contract
+from sheets_config.google_utils import download_sheet
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,14 +86,14 @@ def process_events(event_name="UserClaimLocked"):
                 new_data.append(row)
 
             # Append new data to existing sheet data
-            updated_csv = append_new_data(existing_sheet, new_data, f'updated_{SHEET_NAME}.csv')
-
-            # Upload updated data to Google Sheets
-            clear_and_upload_new_records(SHEET_NAME, updated_csv)
-
-            # Clean up temporary files
-            os.remove(existing_sheet)
-            os.remove(updated_csv)
+            # updated_csv = append_new_data(existing_sheet, new_data, f'updated_{SHEET_NAME}.csv')
+            #
+            # # Upload updated data to Google Sheets
+            # clear_and_upload_new_records(SHEET_NAME, updated_csv)
+            #
+            # # Clean up temporary files
+            # os.remove(existing_sheet)
+            # os.remove(updated_csv)
 
             logger.info(f"Successfully processed and uploaded new events for {event_name}")
             # slack_notification(f"Successfully processed and uploaded new events for {event_name}")

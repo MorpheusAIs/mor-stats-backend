@@ -16,7 +16,7 @@ def slack_notification(message):
     slack_data = {
         "username": "morpheus-explorer",
         "icon_emoji": ":satellite_antenna:",
-        "channel": NOTIFICATION_CHANNEL,
+        "channel": 'slack-example-channel',
         "attachments": [
             {
                 "color": "#9733EE",
@@ -42,7 +42,7 @@ def slack_notification_cron(message):
     slack_data = {
         "username": "cron-job-processor",
         "icon_emoji": ":satellite_antenna:",
-        "channel": NOTIFICATION_CHANNEL,
+        "channel": 'mor-compute-dash-errors"',
         "attachments": [
             {
                 "color": "#9733EE",

@@ -5,21 +5,24 @@
 1) Install the requirements: `pip install -r "requirements.txt"`
 
 2) Create a `.env` file and fill in these values (Refer to the `.env.example` to create this file):
-- ```
-  RPC_URL=
-  ARB_RPC_URL=
-  BASE_RPC_URL=
-  ETHERSCAN_API_KEY=
-  ARBISCAN_API_KEY=
-  BASESCAN_API_KEY=
-  DUNE_API_KEY=
-  DUNE_QUERY_ID=
-  SPREADSHEET_ID=
-  GITHUB_API_KEY=
-  SLACK_URL=
-  ```
-3) Place your Google Sheets Integration Credentials json file in the `sheets_config` directory
-4) Run: `uvicorn main:app --reload` to run the FastAPI backend.
+    ```
+    RPC_URL=
+    ARB_RPC_URL=
+    BASE_RPC_URL=
+    ETHERSCAN_API_KEY=
+    ARBISCAN_API_KEY=
+    BASESCAN_API_KEY=
+    DUNE_API_KEY=
+    DUNE_QUERY_ID=
+    GITHUB_API_KEY=
+    SLACK_URL=
+    DB_HOST=
+    DB_NAME=
+    DB_USER=
+    DB_PASSWORD=
+    ```
+
+3) Run: `uvicorn main:app --reload` to run the FastAPI backend.
 
 ## Testing
 

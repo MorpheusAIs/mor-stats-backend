@@ -5,10 +5,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime, date
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-import glob
 
+from cron_master_processor import run_update_process
 from helpers.capital_helpers.capital_main import get_capital_metrics
 from helpers.code_helpers.get_github_commits_metrics import get_commits_data
 from helpers.staking_helpers.staking_main import (get_wallet_stake_info,
@@ -522,6 +522,15 @@ async def get_circ_supply_by_chains():
     except Exception as e:
         logger.error(f"Error fetching code in chain-wise supplies: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred")
+
+@app.post("/job/{job_name}/start", status_code=201)
+async def start_job(job_name: str, background_tasks: BackgroundTasks):
+    if job_name == "mor_stats":
+        background_tasks.add_task(run_update_process)
+    else:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return {"message": "Job Accepted"}
 
 
 @app.get("/health")
