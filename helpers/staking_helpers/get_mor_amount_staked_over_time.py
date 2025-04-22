@@ -8,7 +8,6 @@ from web3 import AsyncWeb3
 
 from app.core.config import (ETH_RPC_URL, USER_MULTIPLIER_SHEET_NAME, DISTRIBUTION_PROXY_ADDRESS, DISTRIBUTION_ABI,
                              logger)
-from sheets_config.google_utils import read_sheet_to_dataframe
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds

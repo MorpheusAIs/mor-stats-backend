@@ -8,8 +8,6 @@ import requests
 from app.core.config import (distribution_contract, EMISSIONS_SHEET_NAME,
                              USER_MULTIPLIER_SHEET_NAME, REWARD_SUM_SHEET_NAME)
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
-from sheets_config.google_utils import read_sheet_to_dataframe
-
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

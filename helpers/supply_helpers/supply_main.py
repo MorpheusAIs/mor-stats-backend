@@ -16,7 +16,6 @@ from app.core.config import (supply_contract, distribution_contract,
                              DUNE_API_KEY, DUNE_QUERY_ID, IMPLIED_PRICES_JSON, CIRC_SUPPLY_SHEET_NAME)
 from helpers.supply_helpers.get_burnt_and_locked_arbitrum import get_locked_amounts, get_burned_amounts
 from helpers.supply_helpers.get_historical_total_supply import get_total_supply_from_emissions_df
-from sheets_config.google_utils import read_sheet_to_dataframe
 from helpers.staking_helpers.get_emission_schedule_for_today import get_historical_emissions
 from sheets_config.slack_notify import slack_notification
 

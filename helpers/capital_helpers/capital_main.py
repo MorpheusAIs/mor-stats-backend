@@ -8,8 +8,6 @@ from app.core.config import (logger, USER_STAKED_SHEET_NAME,
                              MAINNET_BLOCK_1ST_JAN_2024, EMISSIONS_SHEET_NAME)
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
 from helpers.staking_helpers.staking_main import calculate_pool_rewards_summary
-from sheets_config.google_utils import read_sheet_to_dataframe
-
 
 def process_transactions(df):
     balances = defaultdict(float)

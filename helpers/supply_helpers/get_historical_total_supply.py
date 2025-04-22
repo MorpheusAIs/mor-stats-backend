@@ -1,7 +1,6 @@
 from collections import OrderedDict
 from datetime import datetime
 import pandas as pd
-from sheets_config.google_utils import read_sheet_to_dataframe
 from app.core.config import EMISSIONS_SHEET_NAME
 import logging
 

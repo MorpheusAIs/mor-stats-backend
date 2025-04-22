@@ -8,7 +8,8 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
-from cron_master_processor import run_update_process
+from app.db.database import DBConfig, Database, init_db
+# from cron_master_processor import run_update_process
 from helpers.capital_helpers.capital_main import get_capital_metrics
 from helpers.code_helpers.get_github_commits_metrics import get_commits_data
 from helpers.staking_helpers.staking_main import (get_wallet_stake_info,
@@ -43,10 +44,21 @@ async def lifespan(app: FastAPI):
     try:
         # Check for required environment variables
         required_vars = [
-            'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
-            'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
-            'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY',
-            'GOOGLE_APPLICATION_CREDENTIALS'
+            'RPC_URL',
+            'ARB_RPC_URL',
+            'BASE_RPC_URL',
+            'ETHERSCAN_API_KEY',
+            'ARBISCAN_API_KEY',
+            'BASESCAN_API_KEY',
+            'DUNE_API_KEY',
+            'DUNE_QUERY_ID',
+            'SPREADSHEET_ID',
+            'GITHUB_API_KEY',
+            'GOOGLE_APPLICATION_CREDENTIALS',
+            'DB_HOST',
+            'DB_NAME',
+            'DB_USER',
+            'DB_PASSWORD'
         ]
         
         missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -54,14 +66,17 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
             # Don't fail startup, just log warning
 
-        # Verify GOOGLE_APPLICATION_CREDENTIALS is valid JSON if present
-        google_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        if google_creds:
-            try:
-                json.loads(google_creds)
-                logger.info("Successfully validated Google credentials JSON")
-            except json.JSONDecodeError:
-                logger.warning("GOOGLE_APPLICATION_CREDENTIALS is present but contains invalid JSON")
+        config = DBConfig(
+            host=os.getenv('DB_HOST'),
+            database=os.getenv('DB_NAME'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            autocommit=False,  # safe default
+        )
+
+        db = init_db(config)
+        db_result = db.fetchone("select 1")
+        logger.info(f"Connected to database with result: {db_result}")
 
         # Initialize cache file
         if not os.path.exists(CACHE_FILE):

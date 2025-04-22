@@ -3,7 +3,6 @@ from typing import Dict, Union
 from datetime import datetime
 import logging
 import time
-from sheets_config.google_utils import read_sheet_to_dataframe
 from app.core.config import EMISSIONS_SHEET_NAME
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

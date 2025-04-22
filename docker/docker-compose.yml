@@ -4,7 +4,7 @@ services:
     env_file: ../.env
     restart: always
     ports:
-      - "3306:3306"
+      - "5432:5432"
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}

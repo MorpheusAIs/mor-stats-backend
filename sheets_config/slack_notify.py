@@ -3,7 +3,6 @@ import sys
 import time
 import json
 import requests
-from app.core.config import NOTIFICATION_CHANNEL
 from app.core.config import SLACK_URL
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
