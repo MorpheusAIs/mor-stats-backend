@@ -83,9 +83,7 @@ class Database:
     def cursor(self, *, dict_rows: bool = True):
         conn = self._acquire()
         try:
-            with conn.cursor(
-                cursor_factory=RealDictCursor if dict_rows else None
-            ) as cur:
+            with conn.cursor() as cur:
                 yield cur
                 if not conn.autocommit:
                     conn.commit()
@@ -98,7 +96,7 @@ class Database:
 
     # ── public helpers ───────────────────────────────────
     def execute(self, sql: str, params: Optional[Sequence[Any]] = None) -> None:
-        with self.cursor(dict_rows=False) as cur:
+        with self.cursor() as cur:
             cur.execute(sql, params)
 
     def fetchone(
@@ -117,12 +115,10 @@ class Database:
 
     # explicit multi‑statement block
     @contextmanager
-    def transaction(self, *, dict_rows: bool = True):
+    def transaction(self):
         conn = self._acquire()
         try:
-            with conn.cursor(
-                cursor_factory=RealDictCursor if dict_rows else None
-            ) as cur:
+            with conn.cursor() as cur:
                 yield cur
             conn.commit()
         except Exception:

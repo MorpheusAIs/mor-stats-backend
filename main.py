@@ -3,12 +3,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, date
+
+import psycopg2
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.database import DBConfig, Database, init_db
+from app.db.database import DBConfig, init_db
 # from cron_master_processor import run_update_process
 from helpers.capital_helpers.capital_main import get_capital_metrics
 from helpers.code_helpers.get_github_commits_metrics import get_commits_data
@@ -75,8 +77,12 @@ async def lifespan(app: FastAPI):
         )
 
         db = init_db(config)
-        db_result = db.fetchone("select 1")
-        logger.info(f"Connected to database with result: {db_result}")
+        try:
+            db_result = db.fetchone("select 1")
+            result_value = db_result[0] if db_result else "N/A"
+            logger.info(f"Database connection check successful. Result: {result_value}")
+        except psycopg2.Error as e:
+            raise Exception("Database connection error") from e
 
         # Initialize cache file
         if not os.path.exists(CACHE_FILE):
