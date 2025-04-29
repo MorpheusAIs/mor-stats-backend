@@ -1,21 +1,20 @@
 import logging
 from datetime import datetime
 from web3 import Web3
-import pandas as pd
+import psycopg2
+from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
-from sheets_config.google_utils import download_sheet
+from app.db.database import get_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 START_BLOCK = 20180927
-
 BATCH_SIZE = 1000000
-SHEET_NAME = "UserClaimLocked"
+TABLE_NAME = "user_claim_locked"
 
 RPC_URL = ETH_RPC_URL
-
 web3 = Web3(Web3.HTTPProvider(RPC_URL))
 contract = distribution_contract
 
@@ -44,16 +43,86 @@ def get_event_headers(event_name):
     event_abi = next((e for e in contract.abi if e['type'] == 'event' and e['name'] == event_name), None)
     if not event_abi:
         raise ValueError(f"Event {event_name} not found in ABI")
-    return ['Timestamp', 'TransactionHash', 'BlockNumber'] + [input['name'] for input in event_abi['inputs']]
+    return ['timestamp', 'transaction_hash', 'block_number'] + [input['name'].lower() for input in event_abi['inputs']]
 
 
-def get_last_block_from_sheet(sheet_data):
+def get_last_block_from_db():
     try:
-        df = pd.read_csv(sheet_data)
-        return max(df['BlockNumber'].astype(int))
-    except (ValueError, KeyError):
-        logger.warning(f"Sheet is empty or corrupted. Starting from default block.")
+        db = get_db()
+
+        with db.cursor() as cursor:
+            cursor.execute(f"SELECT MAX(block_number) FROM {TABLE_NAME}")
+            result = cursor.fetchone()[0]
+            return int(result) if result else None
+    except Exception as e:
+        logger.warning(f"Error getting last block from database: {str(e)}")
         return None
+
+
+def ensure_table_exists(headers):
+    """Create the table if it doesn't exist, with columns based on event structure"""
+    try:
+        db = get_db()
+
+        with db.cursor() as cursor:
+            # Get column definitions, assume all event args are text for flexibility
+            columns = [
+                "timestamp TIMESTAMP",
+                "transaction_hash TEXT",
+                "block_number BIGINT"
+            ]
+
+            # Add columns for each event argument
+            for header in headers[3:]:
+                columns.append(f"{header} TEXT")
+
+            # Create table if it doesn't exist
+            create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                {', '.join(columns)}
+            )
+            """
+            cursor.execute(create_table_query)
+
+            # Create index on block_number for efficient lookups
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_block_number ON {TABLE_NAME} (block_number)")
+
+            cursor.commit()
+            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+    except Exception as e:
+        logger.error(f"Error ensuring table exists: {str(e)}")
+        raise
+
+
+def insert_events_to_db(events_data, headers):
+    try:
+        with psycopg2.connect(POSTGRES_URI) as conn:
+            cursor = conn.cursor()
+
+            # Prepare column names for the insert query
+            columns = ', '.join(headers)
+
+            # Prepare values for the insert
+            values = []
+            for event in events_data:
+                row_values = []
+                for header in headers:
+                    row_values.append(event.get(header, None))
+                values.append(tuple(row_values))
+
+            # Perform batch insert
+            insert_query = f"""
+            INSERT INTO {TABLE_NAME} ({columns})
+            VALUES %s
+            """
+            execute_values(cursor, insert_query, values)
+
+            conn.commit()
+            logger.info(f"Inserted {len(values)} events into database")
+    except Exception as e:
+        logger.error(f"Error inserting events to database: {str(e)}")
+        raise
 
 
 def process_events(event_name="UserClaimLocked"):
@@ -61,9 +130,11 @@ def process_events(event_name="UserClaimLocked"):
         latest_block = web3.eth.get_block('latest')['number']
         headers = get_event_headers(event_name)
 
-        # Download existing sheet data
-        existing_sheet = download_sheet(SHEET_NAME)
-        last_processed_block = get_last_block_from_sheet(existing_sheet)
+        # Ensure the database table exists with correct structure
+        ensure_table_exists(headers)
+
+        # Get the last processed block
+        last_processed_block = get_last_block_from_db()
 
         if last_processed_block is None:
             start_block = START_BLOCK
@@ -76,36 +147,31 @@ def process_events(event_name="UserClaimLocked"):
         if events:
             new_data = []
             for event in events:
+                # Convert header names to lowercase for PostgreSQL convention
                 row = {
-                    'Timestamp': datetime.fromtimestamp(
-                        web3.eth.get_block(event['blockNumber'])['timestamp']).isoformat(),
-                    'TransactionHash': event['transactionHash'].hex(),
-                    'BlockNumber': event['blockNumber']
+                    'timestamp': datetime.fromtimestamp(
+                        web3.eth.get_block(event['blockNumber'])['timestamp']),
+                    'transaction_hash': event['transactionHash'].hex(),
+                    'block_number': event['blockNumber']
                 }
-                row.update(event['args'])
+
+                # Add event arguments with lowercase keys
+                for key, value in event['args'].items():
+                    row[key.lower()] = str(value) if value is not None else None
+
                 new_data.append(row)
 
-            # Append new data to existing sheet data
-            # updated_csv = append_new_data(existing_sheet, new_data, f'updated_{SHEET_NAME}.csv')
-            #
-            # # Upload updated data to Google Sheets
-            # clear_and_upload_new_records(SHEET_NAME, updated_csv)
-            #
-            # # Clean up temporary files
-            # os.remove(existing_sheet)
-            # os.remove(updated_csv)
+            # Insert the new events into the database
+            insert_events_to_db(new_data, headers)
 
-            logger.info(f"Successfully processed and uploaded new events for {event_name}")
-            # slack_notification(f"Successfully processed and uploaded new events for {event_name}")
+            logger.info(f"Successfully processed and stored new events for {event_name}")
         else:
             logger.info(f"No new events found for {event_name}.")
-            # slack_notification(f"No new events found for {event_name}.")
 
     except Exception as e:
         logger.error(f"An error occurred in process_events: {str(e)}")
         logger.exception("Exception details:")
-        # slack_notification(f"Error in processing events for {event_name}: {str(e)}")
 
 
-# if __name__ == "__main__":
-#     process_events()
+if __name__ == "__main__":
+    process_events()

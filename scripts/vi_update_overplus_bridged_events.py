@@ -1,27 +1,74 @@
 import logging
-import os
 from datetime import datetime
 from web3 import Web3
-import pandas as pd
-from configuration.config import ETH_RPC_URL, distribution_contract
-from sheet_config.google_utils import (
-    download_sheet, append_new_data, clear_and_upload_new_records
-)
+from psycopg2.extras import execute_values
+
+from app.core.config import ETH_RPC_URL, distribution_contract
+from app.db.database import get_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 START_BLOCK = 20180927
 BATCH_SIZE = 1000000
-SHEET_NAME = "OverplusBridged"
+TABLE_NAME = "overplus_bridged_events"
+EVENT_NAME = "OverplusBridged"  # The actual event name in the contract
 
 RPC_URL = ETH_RPC_URL
-
 web3 = Web3(Web3.HTTPProvider(RPC_URL))
 contract = distribution_contract
 
+def ensure_table_exists():
+    """Create the table if it doesn't exist"""
+
+    db = get_db()
+    try:
+        with db.cursor() as cursor:
+            create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP NOT NULL,
+                transaction_hash TEXT NOT NULL,
+                block_number BIGINT NOT NULL,
+                amount NUMERIC(78, 0) NOT NULL,
+                unique_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            cursor.execute(create_table_query)
+
+            # Create indexes for efficient lookups
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_block ON {TABLE_NAME} (block_number)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_unique_id ON {TABLE_NAME} (unique_id)")
+
+            # Create a unique index on transaction hash and block number
+            # to prevent duplicate event processing
+            cursor.execute(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_tx_unique 
+            ON {TABLE_NAME} (transaction_hash, block_number)
+            """)
+
+            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+    except Exception as e:
+        logger.error(f"Error ensuring table exists: {str(e)}")
+        raise
+
+
+def get_last_block_from_db():
+    """Get the last processed block number from the database"""
+    db = get_db()
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(f"SELECT MAX(block_number) FROM {TABLE_NAME}")
+            result = cursor.fetchone()[0]
+            return int(result) if result else None
+    except Exception as e:
+        logger.warning(f"Error getting last block from database: {str(e)}")
+        return None
+
 
 def get_events_in_batches(start_block, end_block, event_name):
+    """Process blockchain events in batches to handle large block ranges"""
     current_start = start_block
     while current_start <= end_block:
         current_end = min(current_start + BATCH_SIZE, end_block)
@@ -33,6 +80,7 @@ def get_events_in_batches(start_block, end_block, event_name):
 
 
 def get_events(from_block, to_block, event_name):
+    """Get blockchain events for the specified block range"""
     try:
         event_filter = getattr(contract.events, event_name).create_filter(from_block=from_block, to_block=to_block)
         return event_filter.get_all_entries()
@@ -41,73 +89,116 @@ def get_events(from_block, to_block, event_name):
         return []
 
 
-def get_event_headers(event_name):
-    event_abi = next((e for e in contract.abi if e['type'] == 'event' and e['name'] == event_name), None)
-    if not event_abi:
-        raise ValueError(f"Event {event_name} not found in ABI")
-    return ['Timestamp', 'TransactionHash', 'BlockNumber'] + [input['name'] for input in event_abi['inputs']]
+def insert_events_to_db(events_data):
+    """Insert event data into the database"""
+    if not events_data:
+        return 0
 
-
-def get_last_block_from_sheet(sheet_data):
+    db = get_db()
     try:
-        df = pd.read_csv(sheet_data)
-        return max(df['BlockNumber'].astype(int))
-    except (ValueError, KeyError):
-        logger.warning(f"Sheet is empty or corrupted. Starting from default block.")
-        return None
+        with db.cursor() as cursor:
+            # Prepare values for insertion
+            values = [
+                (
+                    event['timestamp'],
+                    event['transaction_hash'],
+                    event['block_number'],
+                    event['amount'],
+                    event['unique_id']
+                )
+                for event in events_data
+            ]
+
+            # Insert data with ON CONFLICT DO NOTHING to handle any duplicates
+            insert_query = f"""
+            INSERT INTO {TABLE_NAME} 
+            (timestamp, transaction_hash, block_number, amount, unique_id)
+            VALUES %s
+            ON CONFLICT (transaction_hash, block_number) DO NOTHING
+            """
+
+            execute_values(cursor, insert_query, values)
+
+            inserted_count = cursor.rowcount
+            logger.info(f"Inserted {inserted_count} new overplus bridged events into database")
+            return inserted_count
+    except Exception as e:
+        logger.error(f"Error inserting overplus bridged events to database: {str(e)}")
+        raise
 
 
-def process_overplus_bridged_events(event_name=SHEET_NAME):
+def process_overplus_bridged_events():
+    """Main function to process OverplusBridged events and store them in PostgreSQL"""
     try:
+        # Ensure database table exists
+        ensure_table_exists()
+
+        # Get the latest block number from the chain
         latest_block = web3.eth.get_block('latest')['number']
-        headers = get_event_headers(event_name)
 
-        # Download existing sheet data
-        existing_sheet = download_sheet(SHEET_NAME)
-        last_processed_block = get_last_block_from_sheet(existing_sheet)
+        # Get the last processed block from the database
+        last_processed_block = get_last_block_from_db()
 
         if last_processed_block is None:
             start_block = START_BLOCK
         else:
             start_block = last_processed_block + 1
 
-        events = list(get_events_in_batches(start_block, latest_block, event_name))
-        logger.info(f"Processing {len(events)} new {event_name} events from block {start_block} to {latest_block}")
+        # Check if there are new blocks to process
+        if start_block > latest_block:
+            logger.info("No new blocks to process.")
+            return 0
+
+        # Get events in batches using the EVENT_NAME constant
+        events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME))
+        logger.info(f"Processing {len(events)} new {EVENT_NAME} events from block {start_block} to {latest_block}")
 
         if events:
-            new_data = []
+            # Process events
+            processed_events = []
             for event in events:
-                row = {
-                    'Timestamp': datetime.fromtimestamp(
-                        web3.eth.get_block(event['blockNumber'])['timestamp']).isoformat(),
-                    'TransactionHash': event['transactionHash'].hex(),
-                    'BlockNumber': event['blockNumber'],
-                    'amount': event['args'].get('amount', ''),
-                    'uniqueId': (event['args'].get('uniqueId', '')).hex()
+                block_timestamp = web3.eth.get_block(event['blockNumber'])['timestamp']
+
+                # Note the special handling for uniqueId - converting to hex
+                unique_id_hex = event['args'].get('uniqueId', b'').hex()
+
+                # Format event data for storage
+                event_data = {
+                    'timestamp': datetime.fromtimestamp(block_timestamp),
+                    'transaction_hash': event['transactionHash'].hex(),
+                    'block_number': event['blockNumber'],
+                    'amount': int(event['args'].get('amount', 0)),  # Store raw amount
+                    'unique_id': unique_id_hex
                 }
-                new_data.append(row)
+                processed_events.append(event_data)
 
-            # Append new data to existing sheet data
-            updated_csv = append_new_data(existing_sheet, new_data, f'updated_{SHEET_NAME}.csv')
+            # Insert events into database
+            inserted_count = insert_events_to_db(processed_events)
 
-            # Upload updated data to Google Sheets
-            clear_and_upload_new_records(SHEET_NAME, updated_csv)
-
-            # Clean up temporary files
-            os.remove(existing_sheet)
-            os.remove(updated_csv)
-
-            logger.info(f"Successfully processed and uploaded new events for {event_name}")
-            # slack_notification(f"Successfully processed and uploaded new events for {event_name}")
+            logger.info(f"Successfully processed and stored {inserted_count} new {EVENT_NAME} events")
+            return inserted_count
         else:
-            logger.info(f"No new events found for {event_name}.")
-            # slack_notification(f"No new events found for {event_name}.")
+            logger.info(f"No new {EVENT_NAME} events found.")
+            return 0
 
     except Exception as e:
-        logger.error(f"An error occurred in process_events: {str(e)}")
+        logger.error(f"An error occurred in process_overplus_bridged_events: {str(e)}")
         logger.exception("Exception details:")
-        # slack_notification(f"Error in processing events for {event_name}: {str(e)}")
+        raise
 
 
-# if __name__ == '__main__':
-#     process_overplus_bridged_events()
+def send_slack_notification(message):
+    """Placeholder for slack notification function"""
+    # This would be implemented elsewhere or imported
+    logger.info(f"NOTIFICATION: {message}")
+
+
+if __name__ == "__main__":
+    try:
+        count = process_overplus_bridged_events()
+        if count > 0:
+            send_slack_notification(f"Successfully processed and stored {count} new {EVENT_NAME} events")
+        else:
+            send_slack_notification(f"No new {EVENT_NAME} events found")
+    except Exception as e:
+        send_slack_notification(f"Error processing {EVENT_NAME} events: {str(e)}")

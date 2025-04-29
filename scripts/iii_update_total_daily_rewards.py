@@ -1,16 +1,14 @@
 import asyncio
 import logging
-import pandas as pd
 import time
 import aiohttp
-import os
+import datetime
+from decimal import Decimal
 from web3 import AsyncWeb3
-from configuration.config import (
-    ETH_RPC_URL, distribution_contract, ETHERSCAN_API_KEY, SPREADSHEET_ID
-)
-from sheet_config.google_utils import (
-    download_sheet, clear_and_upload_new_records, slack_notification
-)
+from psycopg2.extras import execute_values
+
+from app.core.config import ETH_RPC_URL, distribution_contract, ETHERSCAN_API_KEY
+from app.db.database import get_db
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -19,13 +17,86 @@ MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
 BATCH_SIZE = 50
 
-INPUT_SHEET_NAME = "UserMultiplier"
-OUTPUT_SHEET_NAME = "RewardSum"
+INPUT_TABLE_NAME = "user_multiplier"
+OUTPUT_TABLE_NAME = "reward_summary"
 
 RPC_URL = ETH_RPC_URL
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
+def ensure_tables_exist():
+    """Create the necessary tables if they don't exist"""
+    db = get_db()
+    try:
+        with db.cursor() as cursor:
+            # Create the reward summary table
+            create_summary_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {OUTPUT_TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP NOT NULL,
+                calculation_block_current BIGINT NOT NULL,
+                calculation_block_past BIGINT NOT NULL,
+                category TEXT NOT NULL,
+                value NUMERIC(30, 18) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            cursor.execute(create_summary_table_query)
+
+            # Create indexes
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_timestamp ON {OUTPUT_TABLE_NAME} (timestamp)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_category ON {OUTPUT_TABLE_NAME} (category)")
+
+            logger.info(f"Ensured table {OUTPUT_TABLE_NAME} exists with required structure")
+
+            # Also create a detail table to store individual rewards if needed
+            create_detail_table_query = f"""
+            CREATE TABLE IF NOT EXISTS reward_detail (
+                id SERIAL PRIMARY KEY,
+                summary_id INTEGER REFERENCES {OUTPUT_TABLE_NAME}(id),
+                user_address TEXT NOT NULL,
+                pool_id INTEGER NOT NULL,
+                daily_reward NUMERIC(30, 18) NOT NULL,
+                total_reward NUMERIC(30, 18) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            cursor.execute(create_detail_table_query)
+
+            # Create indexes for the detail table
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reward_detail_user ON reward_detail (user_address)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reward_detail_pool ON reward_detail (pool_id)")
+
+            logger.info("Ensured table reward_detail exists with required structure")
+    except Exception as e:
+        logger.error(f"Error ensuring tables exist: {str(e)}")
+        raise
+
+def get_user_data():
+    """Get user and pool data from the user_multiplier table"""
+    try:
+        db = get_db()
+        with db.cursor() as cursor:
+            query = f"""
+            SELECT user_address, pool_id
+            FROM {INPUT_TABLE_NAME}
+            WHERE multiplier IS NOT NULL
+            GROUP BY user_address, pool_id
+            """
+            cursor.execute(query)
+
+            records = []
+            for row in cursor.fetchall():
+                records.append({
+                    'user': row[0],
+                    'poolId': row[1]
+                })
+
+            logger.info(f"Retrieved {len(records)} unique user/pool combinations")
+            return records
+    except Exception as e:
+        logger.error(f"Error getting user data: {str(e)}")
+        raise
 
 async def get_block_by_timestamp(timestamp):
     url = (f"https://api.etherscan.io/api?module=block&action=getblocknobytime&timestamp="
@@ -48,89 +119,193 @@ async def get_user_reward_at_block(pool_id, address, block):
     for attempt in range(MAX_RETRIES):
         try:
             reward = await contract.functions.getCurrentUserReward(pool_id, address).call(block_identifier=block)
-            return float(w3.from_wei(reward, 'ether'))
+            return Decimal(w3.from_wei(reward, 'ether'))
         except Exception as e:
             if 'Too Many Requests' in str(e) and attempt < MAX_RETRIES - 1:
                 logger.warning(f"Rate limit hit, retrying in {RETRY_DELAY} seconds...")
                 await asyncio.sleep(RETRY_DELAY)
+                return None
             else:
                 logger.error(f"Error getting reward for {address} in pool {pool_id} at block {block}: {str(e)}")
-                return 0
+                return Decimal('0')
+    return None
 
 
 async def process_rewards_batch(batch, block_24_hours_ago, block_right_now):
     tasks = []
-    for _, row in batch.iterrows():
-        pool_id = int(row['poolId'])
-        address = w3.to_checksum_address(row['user'])
+    for record in batch:
+        pool_id = int(record['poolId'])
+        address = w3.to_checksum_address(record['user'])
         tasks.append(get_user_reward_at_block(pool_id, address, block_right_now))
         tasks.append(get_user_reward_at_block(pool_id, address, block_24_hours_ago))
 
     results = await asyncio.gather(*tasks)
 
-    daily_rewards = [results[i] - results[i + 1] for i in range(0, len(results), 2)]
-    total_rewards = results[::2]
+    rewards_data = []
+    for i in range(0, len(results), 2):
+        current_reward = results[i]
+        past_reward = results[i + 1]
+        daily_reward = current_reward - past_reward
 
-    return daily_rewards, total_rewards
+        # Calculate the index in the batch
+        batch_index = i // 2
+
+        rewards_data.append({
+            'user_address': batch[batch_index]['user'],
+            'pool_id': int(batch[batch_index]['poolId']),
+            'daily_reward': daily_reward,
+            'total_reward': current_reward
+        })
+
+    return rewards_data
+
+def save_reward_summary(summary_data, block_24_hours_ago, latest_block):
+    """Save the reward summary data to the database"""
+    try:
+        db = get_db()
+        with db.cursor() as cursor:
+            # Insert summary data
+            current_time = datetime.datetime.now()
+
+            summary_values = []
+            for category, value in summary_data.items():
+                summary_values.append((
+                    current_time,
+                    latest_block,
+                    block_24_hours_ago,
+                    category,
+                    value
+                ))
+
+            summary_insert_query = f"""
+            INSERT INTO {OUTPUT_TABLE_NAME} 
+            (timestamp, calculation_block_current, calculation_block_past, category, value)
+            VALUES %s
+            RETURNING id
+            """
+
+            cursor.execute("SELECT nextval(pg_get_serial_sequence(%s, 'id'))", (OUTPUT_TABLE_NAME,))
+            summary_id = cursor.fetchone()[0]
+
+            execute_values(cursor, summary_insert_query, summary_values)
+
+            logger.info(f"Saved reward summary with {len(summary_values)} categories")
+            return summary_id
+    except Exception as e:
+        logger.error(f"Error saving reward summary: {str(e)}")
+        raise
+
+
+def save_reward_details(reward_details, summary_id):
+    """Save detailed reward data for each user/pool"""
+    try:
+        if not reward_details:
+            logger.info("No reward details to save")
+            return
+
+        db = get_db()
+        with db.cursor() as cursor:
+            values = [
+                (
+                    summary_id,
+                    detail['user_address'],
+                    detail['pool_id'],
+                    detail['daily_reward'],
+                    detail['total_reward']
+                )
+                for detail in reward_details
+            ]
+
+            detail_insert_query = """
+                                  INSERT INTO reward_detail
+                                      (summary_id, user_address, pool_id, daily_reward, total_reward)
+                                  VALUES %s \
+                                  """
+
+            execute_values(cursor, detail_insert_query, values)
+
+            logger.info(f"Saved {len(values)} reward detail records")
+    except Exception as e:
+        logger.error(f"Error saving reward details: {str(e)}")
+        raise
 
 
 async def calculate_rewards():
     try:
-        input_csv = download_sheet(INPUT_SHEET_NAME)
-        df = pd.read_csv(input_csv)
-        df = df.drop_duplicates(subset=['user', 'poolId'], keep='first')
+        # Ensure tables exist
+        ensure_tables_exist()
 
+        # Fetch user data from database
+        users = get_user_data()
+
+        if not users:
+            logger.warning("No users found in the database")
+            return
+
+        # Get blocks for calculation
         block_24_hours_ago, block_right_now = await get_useful_blocks()
+        latest_block = await w3.eth.get_block_number() if block_right_now == 'latest' else block_right_now
 
-        batches = [df[i:i + BATCH_SIZE] for i in range(0, df.shape[0], BATCH_SIZE)]
+        logger.info(f"Calculating rewards between blocks {block_24_hours_ago} and {latest_block}")
 
-        daily_pool_0_sum = daily_pool_1_sum = total_pool_0_sum = total_pool_1_sum = 0
+        # Split users into batches
+        batches = [users[i:i + BATCH_SIZE] for i in range(0, len(users), BATCH_SIZE)]
+
+        # Process all users
+        daily_pool_0_sum = Decimal('0')
+        daily_pool_1_sum = Decimal('0')
+        total_pool_0_sum = Decimal('0')
+        total_pool_1_sum = Decimal('0')
+
+        all_reward_details = []
 
         for i, batch in enumerate(batches):
             logger.info(f"Processing batch {i + 1}/{len(batches)}")
-            daily_rewards, total_rewards = await process_rewards_batch(batch, block_24_hours_ago, block_right_now)
+            reward_details = await process_rewards_batch(batch, block_24_hours_ago, block_right_now)
 
-            for j, (daily_reward, total_reward) in enumerate(zip(daily_rewards, total_rewards)):
-                pool_id = int(batch.iloc[j]['poolId'])
-                if pool_id == 0:
-                    daily_pool_0_sum += daily_reward
-                    total_pool_0_sum += total_reward
-                elif pool_id == 1:
-                    daily_pool_1_sum += daily_reward
-                    total_pool_1_sum += total_reward
+            # Aggregate reward data
+            for detail in reward_details:
+                if detail['pool_id'] == 0:
+                    daily_pool_0_sum += detail['daily_reward']
+                    total_pool_0_sum += detail['total_reward']
+                elif detail['pool_id'] == 1:
+                    daily_pool_1_sum += detail['daily_reward']
+                    total_pool_1_sum += detail['total_reward']
+
+                all_reward_details.append(detail)
 
             logger.info(f"Completed batch {i + 1}/{len(batches)}")
-            await asyncio.sleep(1)
 
+            # Add delay between batches to prevent rate limiting
+            if i < len(batches) - 1:
+                await asyncio.sleep(1)
+
+        # Calculate combined totals
         daily_combined_sum = daily_pool_0_sum + daily_pool_1_sum
         total_combined_sum = total_pool_0_sum + total_pool_1_sum
 
-        result_df = pd.DataFrame({
-            'Category': ['Daily Pool 0', 'Daily Pool 1', 'Daily Combined', 'Total Pool 0', 'Total Pool 1',
-                         'Total Combined'],
-            'Value': [daily_pool_0_sum, daily_pool_1_sum, daily_combined_sum, total_pool_0_sum, total_pool_1_sum,
-                      total_combined_sum]
-        })
+        # Prepare summary data
+        summary_data = {
+            'Daily Pool 0': daily_pool_0_sum,
+            'Daily Pool 1': daily_pool_1_sum,
+            'Daily Combined': daily_combined_sum,
+            'Total Pool 0': total_pool_0_sum,
+            'Total Pool 1': total_pool_1_sum,
+            'Total Combined': total_combined_sum
+        }
 
-        output_csv = f'updated_{OUTPUT_SHEET_NAME}.csv'
-        result_df.to_csv(output_csv, index=False)
+        # Save summary to database
+        summary_id = save_reward_summary(summary_data, block_24_hours_ago, latest_block)
 
-        clear_and_upload_new_records(OUTPUT_SHEET_NAME, output_csv)
+        # Save detailed data
+        save_reward_details(all_reward_details, summary_id)
 
-        logger.info(f"Successfully calculated and uploaded reward sums")
-        slack_notification(f"Successfully calculated and uploaded reward sums to {OUTPUT_SHEET_NAME}!"
-                           f" Link to file: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/")
+        logger.info(f"Successfully calculated and stored reward summaries and details")
 
     except Exception as e:
         logger.error(f"Error in calculate_rewards: {str(e)}")
-        slack_notification(f"Error in calculating rewards: {str(e)}")
+        logger.exception("Exception details:")
         raise
-    finally:
-        if 'input_csv' in locals() and os.path.exists(input_csv):
-            os.remove(input_csv)
-        if 'output_csv' in locals() and os.path.exists(output_csv):
-            os.remove(output_csv)
-
 
 
 if __name__ == "__main__":
