@@ -5,6 +5,7 @@ from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from helpers.web3_helper import get_events_in_batches
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,18 +67,6 @@ def get_last_block_from_db():
     except Exception as e:
         logger.warning(f"Error getting last block from database: {str(e)}")
         return None
-
-
-def get_events_in_batches(start_block, end_block, event_name):
-    """Process blockchain events in batches to handle large block ranges"""
-    current_start = start_block
-    while current_start <= end_block:
-        current_end = min(current_start + BATCH_SIZE, end_block)
-        try:
-            yield from get_events(current_start, current_end, event_name)
-        except Exception as e:
-            logger.error(f"Error getting events from block {current_start} to {current_end}: {str(e)}")
-        current_start = current_end + 1
 
 
 def get_events(from_block, to_block, event_name):
@@ -152,7 +141,7 @@ def process_user_withdrawn_events(event_name="UserWithdrawn"):
             return 0
 
         # Get events in batches
-        events = list(get_events_in_batches(start_block, latest_block, event_name))
+        events = list(get_events_in_batches(start_block, latest_block, event_name, BATCH_SIZE))
         logger.info(f"Processing {len(events)} new {event_name} events from block {start_block} to {latest_block}")
 
         if events:

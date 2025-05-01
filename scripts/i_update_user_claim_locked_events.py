@@ -6,8 +6,9 @@ from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from helpers.database_helpers.db_helper import get_last_block_from_db
+from helpers.web3_helper import get_events_in_batches, get_event_headers
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 START_BLOCK = 20180927
@@ -17,46 +18,6 @@ TABLE_NAME = "user_claim_locked"
 RPC_URL = ETH_RPC_URL
 web3 = Web3(Web3.HTTPProvider(RPC_URL))
 contract = distribution_contract
-
-
-def get_events_in_batches(start_block, end_block, event_name):
-    current_start = start_block
-    while current_start <= end_block:
-        current_end = min(current_start + BATCH_SIZE, end_block)
-        try:
-            yield from get_events(current_start, current_end, event_name)
-        except Exception as e:
-            logger.error(f"Error getting events from block {current_start} to {current_end}: {str(e)}")
-        current_start = current_end + 1
-
-
-def get_events(from_block, to_block, event_name):
-    try:
-        event_filter = getattr(contract.events, event_name).create_filter(from_block=from_block, to_block=to_block)
-        return event_filter.get_all_entries()
-    except Exception as e:
-        logger.error(f"Error getting events for {event_name} from block {from_block} to {to_block}: {str(e)}")
-        return []
-
-
-def get_event_headers(event_name):
-    event_abi = next((e for e in contract.abi if e['type'] == 'event' and e['name'] == event_name), None)
-    if not event_abi:
-        raise ValueError(f"Event {event_name} not found in ABI")
-    return ['timestamp', 'transaction_hash', 'block_number'] + [input['name'].lower() for input in event_abi['inputs']]
-
-
-def get_last_block_from_db():
-    try:
-        db = get_db()
-
-        with db.cursor() as cursor:
-            cursor.execute(f"SELECT MAX(block_number) FROM {TABLE_NAME}")
-            result = cursor.fetchone()[0]
-            return int(result) if result else None
-    except Exception as e:
-        logger.warning(f"Error getting last block from database: {str(e)}")
-        return None
 
 
 def ensure_table_exists(headers):
@@ -97,8 +58,9 @@ def ensure_table_exists(headers):
 
 def insert_events_to_db(events_data, headers):
     try:
-        with psycopg2.connect(POSTGRES_URI) as conn:
-            cursor = conn.cursor()
+        db = get_db()
+
+        with db.cursor() as cursor:
 
             # Prepare column names for the insert query
             columns = ', '.join(headers)
@@ -118,7 +80,7 @@ def insert_events_to_db(events_data, headers):
             """
             execute_values(cursor, insert_query, values)
 
-            conn.commit()
+            cursor.commit()
             logger.info(f"Inserted {len(values)} events into database")
     except Exception as e:
         logger.error(f"Error inserting events to database: {str(e)}")
@@ -134,14 +96,14 @@ def process_events(event_name="UserClaimLocked"):
         ensure_table_exists(headers)
 
         # Get the last processed block
-        last_processed_block = get_last_block_from_db()
+        last_processed_block = get_last_block_from_db(TABLE_NAME)
 
         if last_processed_block is None:
             start_block = START_BLOCK
         else:
             start_block = last_processed_block + 1
 
-        events = list(get_events_in_batches(start_block, latest_block, event_name))
+        events = list(get_events_in_batches(start_block, latest_block, event_name, BATCH_SIZE))
         logger.info(f"Processing {len(events)} new {event_name} events from block {start_block} to {latest_block}")
 
         if events:

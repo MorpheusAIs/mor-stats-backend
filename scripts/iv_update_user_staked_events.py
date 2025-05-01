@@ -3,7 +3,8 @@ from datetime import datetime
 
 from app.core.config import distribution_contract, ETH_RPC_URL
 from app.web3.web3_wrapper import Web3Provider
-from helpers.database_helpers.user_staked_events_db_helper import ensure_user_staked_events_table_exists, get_last_block_from_user_staked_events_db, \
+from helpers.database_helpers.db_helper import get_last_block_from_db
+from helpers.database_helpers.user_staked_events_db_helper import ensure_user_staked_events_table_exists, \
     insert_events_to_db
 from helpers.slack import send_slack_notification
 from helpers.web3_helper import get_events_in_batches
@@ -28,7 +29,7 @@ def process_user_staked_events(event_name="UserStaked"):
         latest_block = web3.eth.get_block('latest')['number']
 
         # Get the last processed block from the database
-        last_processed_block = get_last_block_from_user_staked_events_db()
+        last_processed_block = get_last_block_from_db(TABLE_NAME)
 
         if last_processed_block is None:
             start_block = START_BLOCK

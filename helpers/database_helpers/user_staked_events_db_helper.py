@@ -43,20 +43,6 @@ def ensure_user_staked_events_table_exists():
         logger.error(f"Error ensuring table exists: {str(e)}")
         raise
 
-def get_last_block_from_user_staked_events_db():
-    """Get the last processed block number from the database"""
-    table_name = "user_staked_events"
-    db = get_db()
-
-    try:
-        with db.cursor() as cursor:
-            cursor.execute(f"SELECT MAX(block_number) FROM {table_name}")
-            result = cursor.fetchone()[0]
-            return int(result) if result else None
-    except Exception as e:
-        logger.warning(f"Error getting last block from database: {str(e)}")
-        return None
-
 
 def insert_events_to_db(events_data):
     """Insert event data into the database"""

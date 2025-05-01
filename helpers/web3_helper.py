@@ -23,3 +23,10 @@ def get_events(from_block, to_block, event_name):
     except Exception as e:
         logger.error(f"Error getting events for {event_name} from block {from_block} to {to_block}: {str(e)}")
         return []
+
+def get_event_headers(event_name):
+    event_abi = next((e for e in distribution_contract.abi if e['type'] == 'event' and e['name'] == event_name), None)
+    if not event_abi:
+        raise ValueError(f"Event {event_name} not found in ABI")
+    return ['timestamp', 'transaction_hash', 'block_number'] + [input['name'].lower() for input in event_abi['inputs']]
+
