@@ -1,14 +1,14 @@
 import asyncio
 import logging
 import time
-import aiohttp
 import datetime
 from decimal import Decimal
 from web3 import AsyncWeb3
 from psycopg2.extras import execute_values
 
-from app.core.config import ETH_RPC_URL, distribution_contract, ETHERSCAN_API_KEY
+from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from helpers.web3_helper import get_block_by_timestamp
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -97,15 +97,6 @@ def get_user_data():
     except Exception as e:
         logger.error(f"Error getting user data: {str(e)}")
         raise
-
-async def get_block_by_timestamp(timestamp):
-    url = (f"https://api.etherscan.io/api?module=block&action=getblocknobytime&timestamp="
-           f"{timestamp}&closest=before"
-           f"&apikey={ETHERSCAN_API_KEY}")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.json()
-            return int(data['result'])
 
 
 async def get_useful_blocks():

@@ -1,6 +1,8 @@
 import logging
 
-from app.core.config import distribution_contract
+import aiohttp
+
+from app.core.config import distribution_contract, ETHERSCAN_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -30,3 +32,11 @@ def get_event_headers(event_name):
         raise ValueError(f"Event {event_name} not found in ABI")
     return ['timestamp', 'transaction_hash', 'block_number'] + [input['name'].lower() for input in event_abi['inputs']]
 
+async def get_block_by_timestamp(timestamp):
+    url = (f"https://api.etherscan.io/api?module=block&action=getblocknobytime&timestamp="
+           f"{timestamp}&closest=before"
+           f"&apikey={ETHERSCAN_API_KEY}")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            data = await response.json()
+            return int(data['result'])

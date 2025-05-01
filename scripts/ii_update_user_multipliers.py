@@ -7,6 +7,7 @@ from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from app.web3.web3_wrapper import get_block_number
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -83,11 +84,6 @@ def get_unprocessed_records():
         raise
 
 
-async def get_block_number(timestamp):
-    latest_block = await w3.eth.get_block('latest', full_transactions=False)
-    return latest_block['number']
-
-
 async def get_multiplier(record):
     for attempt in range(MAX_RETRIES):
         try:
@@ -99,7 +95,7 @@ async def get_multiplier(record):
             else:
                 timestamp = record['timestamp']
 
-            block_number = await get_block_number(timestamp)
+            block_number = await get_block_number()
             multiplier = await contract.functions.getCurrentUserMultiplier(pool_id, user).call(
                 block_identifier=block_number)
 

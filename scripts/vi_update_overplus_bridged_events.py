@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime
-from web3 import Web3
 from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from app.web3.web3_wrapper import Web3Provider
+from helpers.database_helpers.db_helper import get_last_block_from_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ TABLE_NAME = "overplus_bridged_events"
 EVENT_NAME = "OverplusBridged"  # The actual event name in the contract
 
 RPC_URL = ETH_RPC_URL
-web3 = Web3(Web3.HTTPProvider(RPC_URL))
+web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
 def ensure_table_exists():
@@ -52,19 +53,6 @@ def ensure_table_exists():
     except Exception as e:
         logger.error(f"Error ensuring table exists: {str(e)}")
         raise
-
-
-def get_last_block_from_db():
-    """Get the last processed block number from the database"""
-    db = get_db()
-    try:
-        with db.cursor() as cursor:
-            cursor.execute(f"SELECT MAX(block_number) FROM {TABLE_NAME}")
-            result = cursor.fetchone()[0]
-            return int(result) if result else None
-    except Exception as e:
-        logger.warning(f"Error getting last block from database: {str(e)}")
-        return None
 
 
 def get_events_in_batches(start_block, end_block, event_name):
@@ -137,7 +125,7 @@ def process_overplus_bridged_events():
         latest_block = web3.eth.get_block('latest')['number']
 
         # Get the last processed block from the database
-        last_processed_block = get_last_block_from_db()
+        last_processed_block = get_last_block_from_db(TABLE_NAME)
 
         if last_processed_block is None:
             start_block = START_BLOCK

@@ -6,6 +6,7 @@ from psycopg2.extras import execute_values
 
 from app.core.config import distribution_contract
 from app.db.database import get_db
+from app.web3.web3_wrapper import Web3Provider
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -117,13 +118,14 @@ def save_new_supply_data(new_data):
 
 def get_block_number_by_timestamp(timestamp):
     """Binary search to find the block number closest to the given timestamp."""
+    provider = Web3Provider.get_instance()
     left = 1
-    right = web3.eth.get_block('latest')['number']
+    right = provider.eth.get_block('latest')['number']
 
     while left <= right:
         mid = (left + right) // 2
         try:
-            mid_block = web3.eth.get_block(mid)
+            mid_block = provider.eth.get_block(mid)
             if mid_block['timestamp'] == timestamp:
                 return mid
             elif mid_block['timestamp'] < timestamp:
