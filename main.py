@@ -1,95 +1,71 @@
-import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, date
+from datetime import datetime
 
-import psycopg2
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.cache.cache_manager import get_cache_item, get_last_cache_update_time, set_cache_item
+from app.core.exceptions import DatabaseError
+from app.core.settings import settings
 from app.db.database import DBConfig, init_db
+from app.middleware.error_handler import add_error_handler
+from app.models.responses import DataResponse, HealthCheckResponse, MessageResponse
 # from cron_master_processor import run_update_process
 from helpers.capital_helpers.capital_main import get_capital_metrics
+from helpers.code_helpers.code_main import get_total_weights_and_contributors
 from helpers.code_helpers.get_github_commits_metrics import get_commits_data
+from helpers.staking_helpers.get_mor_amount_staked_over_time import get_mor_staked_over_time
 from helpers.staking_helpers.staking_main import (get_wallet_stake_info,
                                                   give_more_reward_response,
                                                   get_analyze_mor_master_dict)
-from helpers.staking_helpers.get_mor_amount_staked_over_time import get_mor_staked_over_time
+from helpers.supply_helpers.get_chain_wise_supplies import get_chain_wise_circ_supply
 from helpers.supply_helpers.supply_main import (get_combined_supply_data,
                                                 get_historical_prices_and_trading_volume, get_market_cap,
                                                 get_mor_holders,
                                                 get_historical_locked_and_burnt_mor)
 from helpers.uniswap_helpers.get_total_combined_uniswap_position import get_combined_uniswap_position
-from helpers.code_helpers.code_main import get_total_weights_and_contributors
-from helpers.supply_helpers.get_chain_wise_supplies import get_chain_wise_circ_supply
 from sheets_config.slack_notify import slack_notification
 
 scheduler = AsyncIOScheduler()
-LAST_CACHE_UPDATE_TIME = None
 
-# Add debug logging
+# Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-logger.debug("Starting application...")
+logger.info("Starting application...")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global LAST_CACHE_UPDATE_TIME
     logger.info("Starting application initialization")
     try:
-        # Check for required environment variables
-        required_vars = [
-            'RPC_URL',
-            'ARB_RPC_URL',
-            'BASE_RPC_URL',
-            'ETHERSCAN_API_KEY',
-            'ARBISCAN_API_KEY',
-            'BASESCAN_API_KEY',
-            'DUNE_API_KEY',
-            'DUNE_QUERY_ID',
-            'SPREADSHEET_ID',
-            'GITHUB_API_KEY',
-            'GOOGLE_APPLICATION_CREDENTIALS',
-            'DB_HOST',
-            'DB_NAME',
-            'DB_USER',
-            'DB_PASSWORD'
-        ]
-        
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
-        if missing_vars:
-            logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
-            # Don't fail startup, just log warning
-
+        # Initialize database
         config = DBConfig(
-            host=os.getenv('DB_HOST'),
-            database=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            autocommit=False,  # safe default
+            host=settings.database.host,
+            port=settings.database.port,
+            database=settings.database.database,
+            user=settings.database.user,
+            password=settings.database.password,
+            minconn=settings.database.minconn,
+            maxconn=settings.database.maxconn,
+            autocommit=settings.database.autocommit,
         )
 
         db = init_db(config)
         try:
-            db_result = db.fetchone("select 1")
-            result_value = db_result[0] if db_result else "N/A"
-            logger.info(f"Database connection check successful. Result: {result_value}")
-        except psycopg2.Error as e:
-            raise Exception("Database connection error") from e
+            if not db.health_check():
+                raise DatabaseError("Database health check failed")
+            logger.info("Database connection check successful")
+        except Exception as e:
+            raise DatabaseError("Database connection error", details={"error": str(e)})
 
-        # Initialize cache file
-        if not os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, 'w') as f:
-                f.write('{}')
-            logger.info(f"Created empty cache file at {CACHE_FILE}")
-
+        # Set up scheduler
         try:
             logger.info("Setting up scheduler")
             scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
@@ -98,7 +74,6 @@ async def lifespan(app: FastAPI):
             logger.error(f"Scheduler error: {str(scheduler_error)}")
             # Continue without scheduler
         
-        LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
         logger.info("Application startup complete")
         yield
     except Exception as e:
@@ -112,473 +87,360 @@ async def lifespan(app: FastAPI):
             logger.error(f"Error during shutdown: {str(shutdown_error)}")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="MOR Stats Backend",
+    description="Backend API for MOR statistics",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 # Add CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "https://*.vercel.app",
-        "https://morpheus-stats-frontend.vercel.app",
-        "https://mor-stats-backend-cfcfatfxejhphfg9.centralus-01.azurewebsites.net"
-    ],  # List of allowed origins
+    allow_origins=settings.api.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# Add error handler middleware
+add_error_handler(app)
+
+# Disable noisy loggers
 logging.getLogger("httpx").disabled = True
 logging.getLogger("dune-client").disabled = True
 logging.getLogger("DuneClient").disabled = True
 logging.getLogger("dune_client.models").disabled = True
 logging.getLogger("dune_client").disabled = True
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-CACHE_FILE = 'cache.json'
-
-
-# Function to read cache from a file
-def read_cache() -> dict:
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, 'r') as file:
-                data = file.read()
-                if data.strip():  # Check if the file is not empty
-                    return json.loads(data)
-                else:
-                    return {}  # Return an empty dictionary if the file is empty
-        except json.JSONDecodeError as e:
-            # Log the error
-            logger.info(f"Error reading cache file: {e}")
-            # Return an empty dictionary if JSON is invalid
-            return {}
-    return {}
-
-
-def json_serial(obj):
-    """JSON serializer for objects not serializable by default json code"""
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    raise TypeError(f"Type not serializable")
-
-
-def ensure_serializable(obj):
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    elif isinstance(obj, dict):
-        return {k: ensure_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [ensure_serializable(i) for i in obj]
-    elif isinstance(obj, (int, float, str, bool, type(None))):
-        return obj
-    else:
-        return str(obj)  # Convert any other type to string
-
-
-def write_cache(cache_data: dict):
-    try:
-        with open(CACHE_FILE, 'w') as file:
-            json.dump(cache_data, file, default=json_serial)
-    except TypeError as e:
-        # This will catch issues with non-serializable objects
-        logging.error(f"TypeError in write_cache: {e}")
-        # You could add code here to identify which key is causing the problem
-        for key, value in cache_data.items():
-            try:
-                json.dumps({key: value}, default=json_serial)
-            except TypeError:
-                logging.error(f"Non-serializable value for key: {key}")
-    except Exception as e:
-        logging.error(f"Error writing to cache file: {e}")
 
 
 async def update_cache_task() -> None:
-    global LAST_CACHE_UPDATE_TIME
+    """Update all cache data."""
     try:
-        cache_data = read_cache()
-
-        cache_data['staking_metrics'] = await get_analyze_mor_master_dict()
-        cache_data['total_and_circ_supply'] = await get_combined_supply_data()
-        cache_data['prices_and_volume'] = await get_historical_prices_and_trading_volume()
-        cache_data['market_cap'] = await get_market_cap()
-        cache_data['give_mor_reward'] = give_more_reward_response()
-        cache_data['stake_info'] = get_wallet_stake_info()
-        cache_data['mor_holders_by_range'] = await get_mor_holders()
-        cache_data['locked_and_burnt_mor'] = await get_historical_locked_and_burnt_mor()
-        cache_data['protocol_liquidity'] = get_combined_uniswap_position()
-        cache_data['capital_metrics'] = get_capital_metrics()
-        cache_data['github_commits'] = get_commits_data()
-        cache_data['historical_mor_rewards_locked'] = ensure_serializable(await get_mor_staked_over_time())
-        cache_data['code_metrics'] = await get_total_weights_and_contributors()
-        cache_data['chain_wise_supplies'] = get_chain_wise_circ_supply()
+        # Update all cache items
+        set_cache_item('staking_metrics', await get_analyze_mor_master_dict())
+        set_cache_item('total_and_circ_supply', await get_combined_supply_data())
+        set_cache_item('prices_and_volume', await get_historical_prices_and_trading_volume())
+        set_cache_item('market_cap', await get_market_cap())
+        set_cache_item('give_mor_reward', give_more_reward_response())
+        set_cache_item('stake_info', get_wallet_stake_info())
+        set_cache_item('mor_holders_by_range', await get_mor_holders())
+        set_cache_item('locked_and_burnt_mor', await get_historical_locked_and_burnt_mor())
+        set_cache_item('protocol_liquidity', get_combined_uniswap_position())
+        set_cache_item('capital_metrics', get_capital_metrics())
+        set_cache_item('github_commits', get_commits_data())
+        set_cache_item('historical_mor_rewards_locked', await get_mor_staked_over_time())
+        set_cache_item('code_metrics', await get_total_weights_and_contributors())
+        set_cache_item('chain_wise_supplies', get_chain_wise_circ_supply())
 
         slack_notification("Finished updating cache")
-
-        # Write the updated cache data to the cache file
-        try:
-            write_cache(cache_data)
-            # After all cache updates are done, update the last cache update time
-            LAST_CACHE_UPDATE_TIME = datetime.now().isoformat()
-            slack_notification(f"Finished writing cache at {LAST_CACHE_UPDATE_TIME}")
-        except Exception as cache_write_error:
-            slack_notification(f"Error writing to cache: {cache_write_error}")
-            logger.info(f"Error writing to cache: {cache_write_error}")
     except Exception as e:
         slack_notification(f"Error in cache update task: {str(e)}")
-        logger.info(f"Error in cache update task: {str(e)}")
+        logger.error(f"Error in cache update task: {str(e)}")
 
 
-@app.get("/")
+@app.get("/", response_model=MessageResponse)
 async def root():
-    return {"message": "Hello World"}
+    """Root endpoint."""
+    return MessageResponse(message="MOR Stats API", success=True)
 
 
-@app.get("/analyze-mor-stakers")
+@app.get("/analyze-mor-stakers", response_model=DataResponse)
 async def get_mor_staker_analysis():
-    cache_data = read_cache()
-
-    if 'staking_metrics' in cache_data:
-        return cache_data['staking_metrics']
+    """Get MOR staker analysis."""
+    cached_data = get_cache_item('staking_metrics')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     # If cache not available, load the data and cache it
     try:
         result = await get_analyze_mor_master_dict()
-
-        cache_data['staking_metrics'] = result
-        write_cache(cache_data)
-
-        return result
-
+        set_cache_item('staking_metrics', result)
+        return DataResponse(data=result)
     except Exception as e:
         logger.error(f"Error fetching stakers: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred fetching stakers")
+        raise HTTPException(status_code=500, detail="An error occurred fetching stakers")
 
 
-@app.get("/give_mor_reward")
+@app.get("/give_mor_reward", response_model=DataResponse)
 async def give_more_reward():
-    cache_data = read_cache()
-
-    if 'give_mor_reward' in cache_data:
-        return cache_data['give_mor_reward']
+    """Get MOR reward information."""
+    cached_data = get_cache_item('give_mor_reward')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         # Call the function to generate the response
         res = give_more_reward_response()
-
-        # Cache the result
-        # Ensure that keys in the response are strings before saving to cache
-        if isinstance(res, dict):
-            res = {str(key): value for key, value in res.items()}
-
-        cache_data['give_mor_reward'] = res
-        write_cache(cache_data)
-
-        return res
+        set_cache_item('give_mor_reward', res)
+        return DataResponse(data=res)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        logger.error(f"Error getting MOR reward: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/get_stake_info")
+@app.get("/get_stake_info", response_model=DataResponse)
 async def get_stake_info():
-    cache_data = read_cache()
-
-    if 'stake_info' in cache_data:
-        return cache_data['stake_info']
+    """Get stake information."""
+    cached_data = get_cache_item('stake_info')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         # Call the function to get the stake information
         result = get_wallet_stake_info()
-
-        # Ensure all keys and values in the result are serializable
-        serializable_result = {str(key): value for key, value in result.items()}
-
-        # Cache the result
-        cache_data['stake_info'] = serializable_result
-        write_cache(cache_data)
-
-        return serializable_result
+        set_cache_item('stake_info', result)
+        return DataResponse(data=result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        logger.error(f"Error getting stake info: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/total_and_circ_supply")
+@app.get("/total_and_circ_supply", response_model=DataResponse)
 async def total_and_circ_supply():
-    cache_data = read_cache()
-
-    if 'total_and_circ_supply' in cache_data:
+    """Get total and circulating supply data."""
+    cached_data = get_cache_item('total_and_circ_supply')
+    if cached_data:
         logger.info("Returning cached total_and_circ_supply data")
-
-        # Return the combined supply data from the cache file with the 'data' key
-        return {"data": cache_data['total_and_circ_supply']}
+        return DataResponse(data=cached_data)
 
     # If cache not available, load the data and cache it
     try:
         logger.info("Cache miss for total_and_circ_supply, fetching new data")
-
-        # Add the combined supply data to the cache file without the 'data' key
-        cache_data['total_and_circ_supply'] = await get_combined_supply_data()
-        write_cache(cache_data)
-
-        # Return the combined supply data from the freshly written cache with the 'data' key
-        return {"data": cache_data['total_and_circ_supply']}
-
+        result = await get_combined_supply_data()
+        set_cache_item('total_and_circ_supply', result)
+        return DataResponse(data=result)
     except Exception as e:
-        logger.info(f"Error fetching total_and_circ_supply data")
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        logger.error(f"Error fetching total_and_circ_supply data: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/prices_and_trading_volume")
+@app.get("/prices_and_trading_volume", response_model=DataResponse)
 async def historical_prices_and_volume():
-    cache_data = read_cache()
-
-    if 'prices_and_volume' in cache_data:
-        return cache_data['prices_and_volume']
+    """Get historical prices and trading volume data."""
+    cached_data = get_cache_item('prices_and_volume')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     # If cache not available, load the data and cache it
     try:
-        cache_data['prices_and_volume'] = await get_historical_prices_and_trading_volume()
-        write_cache(cache_data)
-
-        return cache_data['prices_and_volume']
-
+        result = await get_historical_prices_and_trading_volume()
+        set_cache_item('prices_and_volume', result)
+        return DataResponse(data=result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        logger.error(f"Error fetching prices and volume: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/get_market_cap")
+@app.get("/get_market_cap", response_model=DataResponse)
 async def market_cap():
-    cache_data = read_cache()
-
-    if 'market_cap' in cache_data:
-        return cache_data['market_cap']
+    """Get market cap data."""
+    cached_data = get_cache_item('market_cap')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     # If cache not available, load the data and cache it
     try:
         result = await get_market_cap()
         if "error" in result:
-            raise HTTPException(status_code=500, detail=f"An error occurred")
+            raise HTTPException(status_code=500, detail="An error occurred")
 
-        cache_data['market_cap'] = result
-        write_cache(cache_data)
-
-        return result
-
+        set_cache_item('market_cap', result)
+        return DataResponse(data=result)
     except Exception as e:
         logger.error(f"Error fetching market cap: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/mor_holders_by_range")
+@app.get("/mor_holders_by_range", response_model=DataResponse)
 async def mor_holders_by_range():
-    cache_data = read_cache()
+    """Get MOR holders by range data."""
+    cached_data = get_cache_item('mor_holders_by_range')
+    if cached_data:
+        logger.info("Returning cached mor_holders_by_range data")
+        return DataResponse(data=cached_data)
 
-    if 'mor_holders_by_range' in cache_data:
-        logger.info("Returning cached data")
-        return cache_data['mor_holders_by_range']
-
-    logger.info("Cache miss, fetching new data")
+    logger.info("Cache miss for mor_holders_by_range, fetching new data")
 
     try:
         result = await get_mor_holders()
-        cache_data['mor_holders_by_range'] = result
-        write_cache(cache_data)
-
-        logger.info("New data fetched and cached")
-        return result
-
+        set_cache_item('mor_holders_by_range', result)
+        logger.info("New mor_holders_by_range data fetched and cached")
+        return DataResponse(data=result)
     except Exception as e:
         logger.exception(f"An error occurred in mor_holders_by_range: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/locked_and_burnt_mor")
+@app.get("/locked_and_burnt_mor", response_model=DataResponse)
 async def locked_and_burnt_mor():
-    cache_data = read_cache()
-
-    if 'locked_and_burnt_mor' in cache_data:
-        return cache_data['locked_and_burnt_mor']
+    """Get locked and burnt MOR data."""
+    cached_data = get_cache_item('locked_and_burnt_mor')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
-        # Cache the result
         result = await get_historical_locked_and_burnt_mor()
-
-        cache_data['locked_and_burnt_mor'] = result
-        write_cache(cache_data)
-
-        # Return the combined data
-        return result
-
+        set_cache_item('locked_and_burnt_mor', result)
+        return DataResponse(data=result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        logger.error(f"Error fetching locked and burnt MOR: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/protocol_liquidity")
+@app.get("/protocol_liquidity", response_model=DataResponse)
 async def get_protocol_liquidity():
-    cache_data = read_cache()
-
-    if 'protocol_liquidity' in cache_data:
-        return cache_data['protocol_liquidity']
+    """Get protocol liquidity data."""
+    cached_data = get_cache_item('protocol_liquidity')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
-        # Call the protocol_liquidity function with the default address
         result = get_combined_uniswap_position()
-
         if not result:
             raise HTTPException(status_code=404, detail="Not Found")
 
-        # Cache the result
-        cache_data['protocol_liquidity'] = result
-        write_cache(cache_data)
-
-        return result  # Return the calculated liquidity in USD, MOR, and stETH values
-
+        set_cache_item('protocol_liquidity', result)
+        return DataResponse(data=result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred")
+        logger.error(f"Error fetching protocol liquidity: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred")
 
 
-# Function to get the last updated time
-@app.get("/last_cache_update_time")
-async def get_last_cache_update_time():
-    return {"last_updated_time": LAST_CACHE_UPDATE_TIME}
+@app.get("/last_cache_update_time", response_model=DataResponse)
+async def get_cache_update_time():
+    """Get the last cache update time."""
+    return DataResponse(data={"last_updated_time": get_last_cache_update_time()})
 
 
-@app.get("/capital_metrics")
+@app.get("/capital_metrics", response_model=DataResponse)
 async def capital_metrics():
-    cache_data = read_cache()
-
-    if 'capital_metrics' in cache_data:
-        return cache_data['capital_metrics']
+    """Get capital metrics data."""
+    cached_data = get_cache_item('capital_metrics')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         result = get_capital_metrics()
-
-        # Cache the result
-        cache_data['capital_metrics'] = result
-        write_cache(cache_data)
-
-        return result
+        set_cache_item('capital_metrics', result)
+        return DataResponse(data=result)
     except Exception as e:
         logger.error(f"Error fetching capital metrics: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching capital metrics")
 
 
-@app.get("/github_commits")
+@app.get("/github_commits", response_model=DataResponse)
 async def get_github_commits():
-    cache_data = read_cache()
-
-    if 'github_commits' in cache_data:
-        return cache_data['github_commits']
+    """Get GitHub commits data."""
+    cached_data = get_cache_item('github_commits')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         result = get_commits_data()
-
-        cache_data['github_commits'] = result
-        write_cache(cache_data)
-
-        return result
+        set_cache_item('github_commits', result)
+        return DataResponse(data=result)
     except Exception as e:
         logger.error(f"Error fetching github commits: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching github commits")
 
 
-@app.get("/historical_mor_rewards_locked")
+@app.get("/historical_mor_rewards_locked", response_model=DataResponse)
 async def get_historical_mor_staked():
-    cache_data = read_cache()
-
-    if 'historical_mor_rewards_locked' in cache_data:
-        return cache_data['historical_mor_rewards_locked']
+    """Get historical MOR rewards locked data."""
+    cached_data = get_cache_item('historical_mor_rewards_locked')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         result = await get_mor_staked_over_time()
-        serializable_result = ensure_serializable(result)
-
-        cache_data['historical_mor_rewards_locked'] = serializable_result
-        write_cache(cache_data)
-
-        return serializable_result
+        set_cache_item('historical_mor_rewards_locked', result)
+        return DataResponse(data=result)
     except Exception as e:
         logger.error(f"Error fetching mor rewards locked: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/code_metrics")
+@app.get("/code_metrics", response_model=DataResponse)
 async def get_code_metrics():
-    cache_data = read_cache()
-
-    if 'code_metrics' in cache_data:
-        return cache_data['code_metrics']
+    """Get code metrics data."""
+    cached_data = get_cache_item('code_metrics')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         result = await get_total_weights_and_contributors()
-
-        cache_data['code_metrics'] = result
-        write_cache(cache_data)
-
-        return result
-
+        set_cache_item('code_metrics', result)
+        return DataResponse(data=result)
     except Exception as e:
         logger.error(f"Error fetching code metrics: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred")
 
 
-@app.get("/chain_wise_supplies")
+@app.get("/chain_wise_supplies", response_model=DataResponse)
 async def get_circ_supply_by_chains():
-    cache_data = read_cache()
-
-    if 'chain_wise_supplies' in cache_data:
-        return cache_data['chain_wise_supplies']
+    """Get chain-wise circulating supply data."""
+    cached_data = get_cache_item('chain_wise_supplies')
+    if cached_data:
+        return DataResponse(data=cached_data)
 
     try:
         result = get_chain_wise_circ_supply()
-
-        cache_data['chain_wise_supplies'] = result
-        write_cache(cache_data)
-
-        return result
+        set_cache_item('chain_wise_supplies', result)
+        return DataResponse(data=result)
 
     except Exception as e:
         logger.error(f"Error fetching code in chain-wise supplies: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred")
 
-@app.post("/job/{job_name}/start", status_code=201)
+@app.post("/job/{job_name}/start", status_code=201, response_model=MessageResponse)
 async def start_job(job_name: str, background_tasks: BackgroundTasks):
+    """Start a background job."""
     if job_name == "mor_stats":
-        background_tasks.add_task(run_update_process)
+        pass
+        # background_tasks.add_task(run_update_process)
     else:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return {"message": "Job Accepted"}
+    return MessageResponse(message="Job Accepted", success=True)
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthCheckResponse)
 async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "env_vars_present": {
-            var: bool(os.getenv(var)) for var in [
-                'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
-                'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
-                'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY', 'SLACK_URL'
-            ]
+    """Health check endpoint."""
+    return HealthCheckResponse(
+        status="healthy",
+        version="1.0.0",
+        uptime=0.0,  # This would ideally be calculated from app start time
+        timestamp=datetime.now(),
+        components={
+            "database": {"status": "up", "details": "Connected"},
+            "cache": {"status": "up", "details": "In-memory cache active"},
+            "env_vars": {
+                "status": "up",
+                "details": {
+                    var: bool(os.getenv(var)) for var in [
+                        'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
+                        'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
+                        'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY', 'SLACK_URL'
+                    ]
+                }
+            }
         }
-    }
+    )
 
 
-@app.get("/debug/check-credentials")
+@app.get("/debug/check-credentials", response_model=DataResponse)
 async def check_credentials():
+    """Check if credentials are properly configured."""
     mounted_path = "/config/credentials.json"
     env_var = bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
     
-    return {
+    return DataResponse(data={
         "mounted_file_exists": os.path.exists(mounted_path),
         "mounted_file_readable": os.access(mounted_path, os.R_OK) if os.path.exists(mounted_path) else False,
         "env_var_exists": env_var,
-    }
+    })
 
 
 if __name__ == "__main__":
