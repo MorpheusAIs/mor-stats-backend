@@ -114,16 +114,6 @@ class ExternalAPISettings(BaseSettings):
     slack_url: Optional[str] = Field(None, env="SLACK_URL")
     github_api_key: str = Field(..., env="GITHUB_API_KEY")
     
-    # Sheet-related constants moved here since they're still needed
-    emissions_sheet_name: str = Field("Emissions")
-    user_multiplier_sheet_name: str = Field("UserMultiplier")
-    reward_sum_sheet_name: str = Field("RewardSum")
-    circ_supply_sheet_name: str = Field("CircSupply")
-    user_staked_sheet_name: str = Field("UserStaked")
-    user_withdrawn_sheet_name: str = Field("UserWithdrawn")
-    overplus_bridged_sheet_name: str = Field("OverplusBridged")
-    spreadsheet_id: str = Field(..., env="SPREADSHEET_ID")
-    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

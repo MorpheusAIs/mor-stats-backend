@@ -32,9 +32,6 @@ run `pytest full_mor_explorer_v1_test.py -v`
 - This script will run all endpoints using `pytest` and test if the requests are successful or not along with providing
 the response time for each endpoint.
 
-NOTE: Please add your own sheets config file
-<!-- TODO: Add a note about the sheets config file -->
-
 ## Devops Pipeline
 
 We use gitlab actions to run pipelines that will build a docker image, deploy it to Azure container registry, and then deploy the container using Azure Container Apps
@@ -67,12 +64,9 @@ Currently, resources in Azure are created and managed manually with the pipeline
 RPC_URL=
 ETHERSCAN_API_KEY=
 SLACK_URL=
-SPREADSHEET_ID=
 ```
 
-2) Place `google-sheet-credentials-example.json` in the `sheet_config` directory
-
-3) `pip install -r "requirements.txt"`
+2) `pip install -r "requirements.txt"`
 
 #### Flow
 1) `cron_master_processor.py` calls `scripts/`
@@ -81,14 +75,12 @@ SPREADSHEET_ID=
 - `iii_update_total_daily_rewards.py`
 
 2) `i_update_user_claim_locked_events.py` fetches the latest `UserClaimLocked` events
-from the blockchain and populates the google sheet with that data for
-`UserClaimLocked` sub-sheet/worksheet.
-3) `ii_update_user_multipliers.py` fetches the `UserClaimLocked` worksheet and fetches the multipliers
-for each address in an async fashion using the async provider and uploads to 
-the `UserMultiplier` worksheet.
-4) `iii_update_total_daily_rewards.py`fetches the `UserMultiplier` worksheet and for each address, it
+from the blockchain and populates the database with that data for `UserClaimLocked`.
+3) `ii_update_user_multipliers.py` fetches the `UserClaimLocked` data and fetches the multipliers
+for each address in an async fashion using the async provider and uploads to the `UserMultiplier` database.
+4) `iii_update_total_daily_rewards.py`fetches the `UserMultiplier` data and for each address, it
 calculates the Daily and Total Staked Rewards using the `getCurrentUserReward` ABI function and then
-uploads the results to the `RewardSum` worksheet.
+uploads the results to the `RewardSum` database.
 
 ### Details
 

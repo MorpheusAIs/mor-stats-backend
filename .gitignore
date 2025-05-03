@@ -29,7 +29,6 @@ env/
 # Credentials
 sheets_config/credentials.json
 
-
 # IDE
 .idea/
 .vscode/

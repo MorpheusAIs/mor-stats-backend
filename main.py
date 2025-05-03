@@ -5,6 +5,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from cron_master_processor import run_update_process
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -28,7 +29,6 @@ from helpers.supply_helpers.supply_main import (get_combined_supply_data,
                                                 get_mor_holders,
                                                 get_historical_locked_and_burnt_mor)
 from helpers.uniswap_helpers.get_total_combined_uniswap_position import get_combined_uniswap_position
-from sheets_config.slack_notify import slack_notification
 
 scheduler = AsyncIOScheduler()
 
@@ -398,7 +398,7 @@ async def start_job(job_name: str, background_tasks: BackgroundTasks):
     """Start a background job."""
     if job_name == "mor_stats":
         pass
-        # background_tasks.add_task(run_update_process)
+        background_tasks.add_task(run_update_process)
     else:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -422,25 +422,12 @@ async def health_check():
                     var: bool(os.getenv(var)) for var in [
                         'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
                         'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
-                        'DUNE_QUERY_ID', 'SPREADSHEET_ID', 'GITHUB_API_KEY', 'SLACK_URL'
+                        'DUNE_QUERY_ID', 'GITHUB_API_KEY'
                     ]
                 }
             }
         }
     )
-
-
-@app.get("/debug/check-credentials", response_model=DataResponse)
-async def check_credentials():
-    """Check if credentials are properly configured."""
-    mounted_path = "/config/credentials.json"
-    env_var = bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-    
-    return DataResponse(data={
-        "mounted_file_exists": os.path.exists(mounted_path),
-        "mounted_file_readable": os.access(mounted_path, os.R_OK) if os.path.exists(mounted_path) else False,
-        "env_var_exists": env_var,
-    })
 
 
 if __name__ == "__main__":

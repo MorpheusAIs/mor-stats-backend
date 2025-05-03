@@ -32,22 +32,9 @@ jobs:
 
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
 
-      # - name: Create Google Sheets credentials
-      #   run: |
-      #     mkdir -p sheets_config
-      #     echo "secrets.GOOGLE_SHEETS_CREDENTIALS " > sheets_config/credentials.json
-      #     chmod 644 sheets_config/credentials.json
-
       - name: Make startup script executable
         run: |
           chmod +x startup.sh
-
-      # - name: Debug directory structure
-      #   run: |
-      #     echo "Current directory contents:"
-      #     ls -la
-      #     echo "sheets_config directory contents:"
-      #     ls -la sheets_config/
 
       - name: Zip artifact for deployment
         run: |
