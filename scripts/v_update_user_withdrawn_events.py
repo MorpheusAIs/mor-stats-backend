@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from web3 import Web3
 from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract

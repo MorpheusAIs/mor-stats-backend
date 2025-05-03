@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 TABLE_NAME = "circulating_supply"
 
+web3 = Web3Provider.get_instance()
+
 def ensure_table_exists():
     """Create the circulating supply table if it doesn't exist"""
     db = get_db()

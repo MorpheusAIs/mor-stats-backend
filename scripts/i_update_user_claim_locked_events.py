@@ -1,11 +1,10 @@
 import logging
 from datetime import datetime
-from web3 import Web3
-import psycopg2
 from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from app.web3.web3_wrapper import Web3Provider
 from helpers.database_helpers.db_helper import get_last_block_from_db
 from helpers.web3_helper import get_events_in_batches, get_event_headers
 
@@ -16,9 +15,8 @@ BATCH_SIZE = 1000000
 TABLE_NAME = "user_claim_locked"
 
 RPC_URL = ETH_RPC_URL
-web3 = Web3(Web3.HTTPProvider(RPC_URL))
+web3 = Web3Provider.get_instance()
 contract = distribution_contract
-
 
 def ensure_table_exists(headers):
     """Create the table if it doesn't exist, with columns based on event structure"""
