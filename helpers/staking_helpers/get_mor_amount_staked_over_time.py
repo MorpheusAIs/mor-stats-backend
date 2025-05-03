@@ -8,6 +8,7 @@ from web3 import AsyncWeb3
 
 from app.core.config import (ETH_RPC_URL, USER_MULTIPLIER_SHEET_NAME, DISTRIBUTION_PROXY_ADDRESS, DISTRIBUTION_ABI,
                              logger)
+from app.repository import UserMultiplierRepository
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
@@ -19,8 +20,84 @@ distribution_contract = w3.eth.contract(address=w3.to_checksum_address(DISTRIBUT
                                         abi=DISTRIBUTION_ABI)
 
 
-def get_dataframe_from_sheet_name(sheet_name):
-    df = read_sheet_to_dataframe(sheet_name)
+def get_repository_data_as_dataframe(repository_class, table_name):
+    """
+    Get data from a repository and convert it to a DataFrame.
+    
+    Args:
+        repository_class: The repository class to use
+        table_name: The table name (for logging purposes)
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    try:
+        # Create repository instance
+        repo = repository_class()
+        
+        # Get all records (with a high limit to ensure we get everything)
+        records = repo.get_all(limit=100000)
+        
+        # Convert to DataFrame
+        if records:
+            # Convert Pydantic models to dictionaries
+            data = [record.model_dump() for record in records]
+            df = pd.DataFrame(data)
+            logger.info(f"Successfully loaded {len(df)} records from {table_name}")
+            return df
+        else:
+            logger.warning(f"No records found in {table_name}")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error reading from {table_name}: {str(e)}")
+        return pd.DataFrame()
+
+
+def get_user_multiplier_dataframe():
+    """
+    Get a DataFrame from a repository based on the sheet name.
+    
+    Args:
+        sheet_name: The name of the sheet (used to determine which repository to use)
+        
+    Returns:
+        DataFrame with the repository data
+    """
+
+    df = get_repository_data_as_dataframe(UserMultiplierRepository, "user_multiplier")
+    
+    # Rename columns to match the expected format
+    if not df.empty:
+        df = df.rename(columns={
+            'timestamp': 'Timestamp',
+            'transaction_hash': 'TransactionHash',
+            'block_number': 'BlockNumber',
+            'pool_id': 'poolId',
+            'user_address': 'user',
+            'multiplier': 'multiplier',
+            'error_message': 'errorMessage'
+        })
+        
+        # Add missing columns that might be expected
+        if 'claimLockStart' not in df.columns:
+            df['claimLockStart'] = 0
+        if 'claimLockEnd' not in df.columns:
+            df['claimLockEnd'] = 0
+            
+        # Try to get claim lock data from the blockchain for each user
+        try:
+            for i, row in df.iterrows():
+                user = row['user']
+                pool_id = row['poolId']
+                try:
+                    user_data = distribution_contract.functions.usersData(user, pool_id).call()
+                    df.at[i, 'claimLockStart'] = user_data[2]  # Assuming index 2 is claimLockStart
+                    df.at[i, 'claimLockEnd'] = user_data[3]    # Assuming index 3 is claimLockEnd
+                except Exception as e:
+                    logger.warning(f"Could not get claim lock data for user {user} in pool {pool_id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error getting claim lock data: {str(e)}")
+            
     return df
 
 
@@ -64,7 +141,12 @@ async def process_batch(batch_df):
 
 async def get_mor_staked_over_time():
     try:
-        df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+        df = get_user_multiplier_dataframe()
+        
+        if df.empty:
+            logger.error("No data found in user_multiplier repository")
+            return {}
+            
         df['Timestamp'] = pd.to_datetime(df['Timestamp'])
 
         # Initialize tracking dictionary with defaultdict

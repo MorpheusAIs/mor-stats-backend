@@ -6,8 +6,14 @@ from app.core.config import (logger, USER_STAKED_SHEET_NAME,
                              USER_WITHDRAWN_SHEET_NAME,
                              OVERPLUS_BRIDGED_SHEET_NAME, distribution_contract,
                              MAINNET_BLOCK_1ST_JAN_2024, EMISSIONS_SHEET_NAME)
+from app.repository import (
+    UserStakedEventsRepository,
+    UserWithdrawnEventsRepository,
+    OverplusBridgedEventsRepository
+)
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
 from helpers.staking_helpers.staking_main import calculate_pool_rewards_summary
+
 
 def process_transactions(df):
     balances = defaultdict(float)
@@ -25,16 +31,76 @@ def safe_divide(df, column, divisor):
     return df
 
 
+def get_repository_data_as_dataframe(repository_class, table_name):
+    """
+    Get data from a repository and convert it to a DataFrame.
+    
+    Args:
+        repository_class: The repository class to use
+        table_name: The table name (for logging purposes)
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    try:
+        # Create repository instance
+        repo = repository_class()
+        
+        # Get all records (with a high limit to ensure we get everything)
+        records = repo.get_all(limit=100000)
+        
+        # Convert to DataFrame
+        if records:
+            # Convert Pydantic models to dictionaries
+            data = [record.model_dump() for record in records]
+            df = pd.DataFrame(data)
+            logger.info(f"Successfully loaded {len(df)} records from {table_name}")
+            return df
+        else:
+            logger.warning(f"No records found in {table_name}")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error reading from {table_name}: {str(e)}")
+        return pd.DataFrame()
+
+
 def get_total_supply_and_staker_info():
     try:
-        user_staked_df = read_sheet_to_dataframe(USER_STAKED_SHEET_NAME)
-        user_withdrawn_df = read_sheet_to_dataframe(USER_WITHDRAWN_SHEET_NAME)
-
+        # Get data from repositories instead of sheets
+        user_staked_df = get_repository_data_as_dataframe(
+            UserStakedEventsRepository, "user_staked_events")
+        user_withdrawn_df = get_repository_data_as_dataframe(
+            UserWithdrawnEventsRepository, "user_withdrawn_events")
+        
+        if user_staked_df.empty or user_withdrawn_df.empty:
+            logger.error("One or both DataFrames are empty")
+            return OrderedDict(), {}, OrderedDict(), OrderedDict(), OrderedDict(), OrderedDict(), pd.DataFrame()
+        
+        # Rename columns to match the expected format
+        user_staked_df = user_staked_df.rename(columns={
+            'timestamp': 'Timestamp',
+            'transaction_hash': 'TransactionHash',
+            'block_number': 'BlockNumber',
+            'pool_id': 'PoolId',
+            'user_address': 'User',
+            'amount': 'Amount'
+        })
+        
+        user_withdrawn_df = user_withdrawn_df.rename(columns={
+            'timestamp': 'Timestamp',
+            'transaction_hash': 'TransactionHash',
+            'block_number': 'BlockNumber',
+            'pool_id': 'PoolId',
+            'user_address': 'User',
+            'amount': 'Amount'
+        })
+        
+        # Convert amount from raw blockchain format to decimal
         user_staked_df = safe_divide(user_staked_df, 'Amount', 1e18)
         user_withdrawn_df = safe_divide(user_withdrawn_df, 'Amount', 1e18)
 
     except Exception as e:
-        logger.error(f"Error reading sheets: {str(e)}")
+        logger.error(f"Error reading from repositories: {str(e)}")
         return OrderedDict(), {}, OrderedDict(), OrderedDict(), OrderedDict(), OrderedDict(), pd.DataFrame()
 
     # Ensure the DataFrames have the required columns
@@ -48,9 +114,12 @@ def get_total_supply_and_staker_info():
         return OrderedDict(), {}, OrderedDict(), OrderedDict(), OrderedDict(), OrderedDict(), pd.DataFrame()
 
     try:
-        # Convert Timestamp to datetime
-        user_staked_df['Timestamp'] = pd.to_datetime(user_staked_df['Timestamp'], errors='coerce')
-        user_withdrawn_df['Timestamp'] = pd.to_datetime(user_withdrawn_df['Timestamp'], errors='coerce')
+        # Convert Timestamp to datetime if it's not already
+        if not pd.api.types.is_datetime64_any_dtype(user_staked_df['Timestamp']):
+            user_staked_df['Timestamp'] = pd.to_datetime(user_staked_df['Timestamp'], errors='coerce')
+        
+        if not pd.api.types.is_datetime64_any_dtype(user_withdrawn_df['Timestamp']):
+            user_withdrawn_df['Timestamp'] = pd.to_datetime(user_withdrawn_df['Timestamp'], errors='coerce')
 
         # Remove rows with NaT timestamps
         user_staked_df = user_staked_df.dropna(subset=['Timestamp'])
@@ -129,22 +198,37 @@ def get_total_supply_and_staker_info():
 
 def get_bridged_overplus_amounts_by_date():
     try:
-        # Read the data from the Google Sheets
-        bridged_df = read_sheet_to_dataframe(OVERPLUS_BRIDGED_SHEET_NAME)
+        # Get data from repository instead of sheet
+        bridged_df = get_repository_data_as_dataframe(
+            OverplusBridgedEventsRepository, "overplus_bridged_events")
+        
+        if bridged_df.empty:
+            logger.error("Bridged events DataFrame is empty")
+            return OrderedDict()
+        
+        # Rename columns to match the expected format
+        bridged_df = bridged_df.rename(columns={
+            'timestamp': 'Timestamp',
+            'transaction_hash': 'TransactionHash',
+            'block_number': 'BlockNumber',
+            'unique_id': 'uniqueId'
+        })
+        
     except Exception as e:
-        logger.error(f"Error reading sheets: {str(e)}")
-        return OrderedDict(), pd.DataFrame()
+        logger.error(f"Error reading from repository: {str(e)}")
+        return OrderedDict()
 
     # Ensure the DataFrame has the required columns
     required_columns = ["Timestamp", "TransactionHash", "BlockNumber", "amount", "uniqueId"]
 
     if not all(col in bridged_df.columns for col in required_columns):
-        logger.error(f"DataFrame is missing required columns")
-        return OrderedDict(), pd.DataFrame()
+        logger.error(f"DataFrame is missing required columns. Available columns: {bridged_df.columns}")
+        return OrderedDict()
 
     try:
-        # Convert Timestamp to datetime
-        bridged_df['Timestamp'] = pd.to_datetime(bridged_df['Timestamp'], errors='coerce')
+        # Convert Timestamp to datetime if it's not already
+        if not pd.api.types.is_datetime64_any_dtype(bridged_df['Timestamp']):
+            bridged_df['Timestamp'] = pd.to_datetime(bridged_df['Timestamp'], errors='coerce')
 
         # Remove rows with NaT timestamps
         bridged_df = bridged_df.dropna(subset=['Timestamp'])
@@ -181,7 +265,7 @@ def get_bridged_overplus_amounts_by_date():
 
     except Exception as e:
         logger.error(f"Error processing data: {str(e)}")
-        return OrderedDict(), pd.DataFrame()
+        return OrderedDict()
 
 
 def get_all_claim_metrics():
@@ -271,3 +355,4 @@ def get_capital_metrics():
 
     else:
         print("An error occurred while processing the data.")
+        return {}

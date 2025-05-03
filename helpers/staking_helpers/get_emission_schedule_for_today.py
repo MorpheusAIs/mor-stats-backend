@@ -9,6 +9,26 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+def get_emissions_data(sheet_name):
+    """
+    Get emissions data from a sheet or potentially a repository in the future.
+    
+    Args:
+        sheet_name: The name of the sheet to read from
+        
+    Returns:
+        DataFrame with the emissions data
+    """
+    try:
+        # For now, we still use the sheet function since we don't have a repository for emissions
+        # In the future, this could be updated to use a repository
+        emissions_df = read_sheet_to_dataframe(sheet_name)
+        return emissions_df
+    except Exception as e:
+        logger.error(f"Error reading emissions data from '{sheet_name}': {str(e)}")
+        raise
+
+
 def read_emission_schedule(today_date: datetime, emissions_data: Union[str, pd.DataFrame]) -> Dict:
     """
     Read the emission schedule from Google Sheets or a provided DataFrame and return processed data for the current day.
@@ -25,9 +45,9 @@ def read_emission_schedule(today_date: datetime, emissions_data: Union[str, pd.D
         # If emissions_data is a string, assume it's a sheet name and fetch the data
         if isinstance(emissions_data, str):
             try:
-                emissions_df = read_sheet_to_dataframe(emissions_data)
+                emissions_df = get_emissions_data(emissions_data)
             except Exception as e:
-                logger.error(f"Error reading Google Sheet '{emissions_data}': {str(e)}")
+                logger.error(f"Error reading data source '{emissions_data}': {str(e)}")
                 raise
         elif isinstance(emissions_data, pd.DataFrame):
             emissions_df = emissions_data
@@ -94,9 +114,9 @@ def get_historical_emissions():
         # If emissions_data is a string, assume it's a sheet name and fetch the data
         if isinstance(emissions_data, str):
             try:
-                emissions_df = read_sheet_to_dataframe(emissions_data)
+                emissions_df = get_emissions_data(emissions_data)
             except Exception as e:
-                logger.error(f"Error reading Google Sheet '{emissions_data}': {str(e)}")
+                logger.error(f"Error reading data source '{emissions_data}': {str(e)}")
                 raise
         elif isinstance(emissions_data, pd.DataFrame):
             emissions_df = emissions_data

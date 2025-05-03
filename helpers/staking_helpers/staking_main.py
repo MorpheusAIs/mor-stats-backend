@@ -7,15 +7,108 @@ import pandas as pd
 import requests
 from app.core.config import (distribution_contract, EMISSIONS_SHEET_NAME,
                              USER_MULTIPLIER_SHEET_NAME, REWARD_SUM_SHEET_NAME)
+from app.repository import UserMultiplierRepository, RewardSummaryRepository
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
+def get_repository_data_as_dataframe(repository_class, table_name):
+    """
+    Get data from a repository and convert it to a DataFrame.
+    
+    Args:
+        repository_class: The repository class to use
+        table_name: The table name (for logging purposes)
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    try:
+        # Create repository instance
+        repo = repository_class()
+        
+        # Get all records (with a high limit to ensure we get everything)
+        records = repo.get_all(limit=100000)
+        
+        # Convert to DataFrame
+        if records:
+            # Convert Pydantic models to dictionaries
+            data = [record.model_dump() for record in records]
+            df = pd.DataFrame(data)
+            logger.info(f"Successfully loaded {len(df)} records from {table_name}")
+            return df
+        else:
+            logger.warning(f"No records found in {table_name}")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error reading from {table_name}: {str(e)}")
+        return pd.DataFrame()
+
+
 def get_dataframe_from_sheet_name(sheet_name):
-    df = read_sheet_to_dataframe(sheet_name)
-    return df
+    """
+    Get a DataFrame from a repository based on the sheet name.
+    
+    Args:
+        sheet_name: The name of the sheet (used to determine which repository to use)
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    if sheet_name == USER_MULTIPLIER_SHEET_NAME:
+        df = get_repository_data_as_dataframe(UserMultiplierRepository, "user_multiplier")
+        
+        # Rename columns to match the expected format
+        if not df.empty:
+            df = df.rename(columns={
+                'timestamp': 'Timestamp',
+                'transaction_hash': 'TransactionHash',
+                'block_number': 'BlockNumber',
+                'pool_id': 'poolId',
+                'user_address': 'user',
+                'multiplier': 'multiplier',
+                'error_message': 'errorMessage'
+            })
+            
+            # Add missing columns that might be expected
+            if 'claimLockStart' not in df.columns:
+                df['claimLockStart'] = 0
+            if 'claimLockEnd' not in df.columns:
+                df['claimLockEnd'] = 0
+                
+            # Try to get claim lock data from the blockchain for each user
+            try:
+                for i, row in df.iterrows():
+                    user = row['user']
+                    pool_id = row['poolId']
+                    try:
+                        user_data = distribution_contract.functions.usersData(user, pool_id).call()
+                        df.at[i, 'claimLockStart'] = user_data[2]  # Assuming index 2 is claimLockStart
+                        df.at[i, 'claimLockEnd'] = user_data[3]    # Assuming index 3 is claimLockEnd
+                    except Exception as e:
+                        logger.warning(f"Could not get claim lock data for user {user} in pool {pool_id}: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error getting claim lock data: {str(e)}")
+                
+        return df
+    elif sheet_name == REWARD_SUM_SHEET_NAME:
+        df = get_repository_data_as_dataframe(RewardSummaryRepository, "reward_summary")
+        
+        # Rename columns to match the expected format
+        if not df.empty:
+            df = df.rename(columns={
+                'category': 'Category',
+                'value': 'Value'
+            })
+            
+        return df
+    else:
+        # For other sheets, we might still need to use the original function
+        # This is a placeholder for EMISSIONS_SHEET_NAME which might still be read from a sheet
+        logger.warning(f"No repository mapping for sheet {sheet_name}, using original function")
+        return None  # Return None to indicate that we should use the original function
 
 
 def get_todays_capital_emission():
@@ -156,13 +249,13 @@ def calculate_average_multipliers():
         average_multiplier = total_multiplier / total_count if total_count > 0 else Decimal('0')
 
         # Calculate average for capital pool (poolId = 0)
-        capital_df = valid_df[valid_df['poolId'] == '0']
+        capital_df = valid_df[valid_df['poolId'] == 0]
         capital_multiplier = capital_df['multiplier'].sum()
         capital_count = len(capital_df)
         average_capital_multiplier = capital_multiplier / capital_count if capital_count > 0 else Decimal('0')
 
         # Calculate average for code pool (poolId = 1)
-        code_df = valid_df[valid_df['poolId'] == '1']
+        code_df = valid_df[valid_df['poolId'] == 1]
         code_multiplier = code_df['multiplier'].sum()
         code_count = len(code_df)
         average_code_multiplier = code_multiplier / code_count if code_count > 0 else Decimal('0')
@@ -182,7 +275,7 @@ def calculate_average_multipliers():
 
 def calculate_pool_rewards_summary():
     try:
-        # Fetch data from RewardSum worksheet
+        # Fetch data from reward_summary table
         df = get_dataframe_from_sheet_name(REWARD_SUM_SHEET_NAME)
 
         # Initialize the pool_rewards dictionary
@@ -202,7 +295,7 @@ def calculate_pool_rewards_summary():
             elif category == 'Total Pool 1':
                 pool_rewards[1]['total_current_user_reward_sum'] = abs(value)
 
-        logger.info("Successfully calculated pool rewards summary from RewardSum worksheet")
+        logger.info("Successfully calculated pool rewards summary from reward_summary table")
         return dict(pool_rewards)  # Convert defaultdict to regular dict
 
     except Exception as e:

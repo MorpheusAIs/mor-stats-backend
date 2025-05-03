@@ -17,8 +17,6 @@ from app.core.config import (supply_contract, distribution_contract,
 from helpers.supply_helpers.get_burnt_and_locked_arbitrum import get_locked_amounts, get_burned_amounts
 from helpers.supply_helpers.get_historical_total_supply import get_total_supply_from_emissions_df
 from helpers.staking_helpers.get_emission_schedule_for_today import get_historical_emissions
-from sheets_config.slack_notify import slack_notification
-
 
 async def get_combined_supply_data():
     try:
