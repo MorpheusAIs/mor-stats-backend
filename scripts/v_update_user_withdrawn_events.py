@@ -106,7 +106,8 @@ def insert_events_to_db(events_data):
         raise
 
 
-def process_user_withdrawn_events(event_name="UserWithdrawn"):
+def process_user_withdrawn_events():
+    event_name = "UserWithdrawn"
     """Main function to process UserWithdrawn events and store them in PostgreSQL"""
     try:
         # Ensure database table exists
@@ -163,19 +164,12 @@ def process_user_withdrawn_events(event_name="UserWithdrawn"):
         logger.exception("Exception details:")
         raise
 
-
-def send_slack_notification(message):
-    """Placeholder for slack notification function"""
-    # This would be implemented elsewhere or imported
-    logger.info(f"NOTIFICATION: {message}")
-
-
 if __name__ == "__main__":
     try:
         count = process_user_withdrawn_events()
         if count > 0:
-            send_slack_notification(f"Successfully processed and stored {count} new UserWithdrawn events")
+            logger.info(f"Successfully processed and stored {count} new UserWithdrawn events")
         else:
-            send_slack_notification("No new UserWithdrawn events found")
+            logger.info("No new UserWithdrawn events found")
     except Exception as e:
-        send_slack_notification(f"Error processing UserWithdrawn events: {str(e)}")
+        logger.info(f"Error processing UserWithdrawn events: {str(e)}")

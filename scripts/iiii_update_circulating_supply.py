@@ -44,7 +44,6 @@ def ensure_table_exists():
         logger.error(f"Error ensuring table exists: {str(e)}")
         raise
 
-
 def get_latest_record():
     """Get the latest circulating supply record from the database"""
     db = get_db()

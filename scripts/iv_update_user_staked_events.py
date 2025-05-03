@@ -19,7 +19,8 @@ RPC_URL = ETH_RPC_URL
 web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
-def process_user_staked_events(event_name="UserStaked"):
+def process_user_staked_events():
+    event_name = "UserStaked"
     """Main function to process UserStaked events and store them in PostgreSQL"""
     try:
         # Ensure database table exists

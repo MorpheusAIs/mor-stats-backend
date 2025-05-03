@@ -175,18 +175,12 @@ def process_overplus_bridged_events():
         raise
 
 
-def send_slack_notification(message):
-    """Placeholder for slack notification function"""
-    # This would be implemented elsewhere or imported
-    logger.info(f"NOTIFICATION: {message}")
-
-
 if __name__ == "__main__":
     try:
         count = process_overplus_bridged_events()
         if count > 0:
-            send_slack_notification(f"Successfully processed and stored {count} new {EVENT_NAME} events")
+            logger.info(f"Successfully processed and stored {count} new {EVENT_NAME} events")
         else:
-            send_slack_notification(f"No new {EVENT_NAME} events found")
+            logger.info(f"No new {EVENT_NAME} events found")
     except Exception as e:
-        send_slack_notification(f"Error processing {EVENT_NAME} events: {str(e)}")
+        logger.info(f"Error processing {EVENT_NAME} events: {str(e)}")

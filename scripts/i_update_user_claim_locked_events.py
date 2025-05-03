@@ -85,7 +85,8 @@ def insert_events_to_db(events_data, headers):
         raise
 
 
-def process_events(event_name="UserClaimLocked"):
+def process_user_claim_locked_events():
+    event_name = "UserClaimLocked"
     try:
         latest_block = web3.eth.get_block('latest')['number']
         headers = get_event_headers(event_name)
@@ -134,4 +135,4 @@ def process_events(event_name="UserClaimLocked"):
 
 
 if __name__ == "__main__":
-    process_events()
+    process_user_claim_locked_events()

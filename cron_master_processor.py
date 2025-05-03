@@ -6,7 +6,7 @@ import time
 
 from app.db.database import get_db, init_db, DBConfig
 from app.core.settings import settings
-from scripts.i_update_user_claim_locked_events import process_events
+from scripts.i_update_user_claim_locked_events import process_user_claim_locked_events
 from scripts.ii_update_user_multipliers import calculate_user_multipliers
 from scripts.iii_update_total_daily_rewards import calculate_rewards
 from scripts.iiii_update_circulating_supply import update_circulating_supply
@@ -65,7 +65,7 @@ async def run_update_process():
 
         # Step 1: Update User Claim Locked Events
         logger.info("Step 1: Updating User Claim Locked Events")
-        process_events()
+        process_user_claim_locked_events()
         logger.info("Step 1 completed successfully")
         time.sleep(5)
 
