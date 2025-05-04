@@ -54,7 +54,7 @@ def get_repository_data_as_dataframe(repository_class, table_name):
 
 def get_user_multiplier_dataframe():
     """
-    Get a DataFrame from a repository based on the sheet name.
+    Get a DataFrame from the repository.
         
     Returns:
         DataFrame with the repository data

@@ -62,7 +62,6 @@ def get_repository_data_as_dataframe(repository_class, table_name):
 
 def get_total_supply_and_staker_info():
     try:
-        # Get data from repositories instead of sheets
         user_staked_df = get_repository_data_as_dataframe(
             UserStakedEventsRepository, "user_staked_events")
         user_withdrawn_df = get_repository_data_as_dataframe(
@@ -194,7 +193,6 @@ def get_total_supply_and_staker_info():
 
 def get_bridged_overplus_amounts_by_date():
     try:
-        # Get data from repository instead of sheet
         bridged_df = get_repository_data_as_dataframe(
             OverplusBridgedEventsRepository, "overplus_bridged_events")
         

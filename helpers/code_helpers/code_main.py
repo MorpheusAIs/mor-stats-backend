@@ -1,7 +1,6 @@
-import json
 from collections import OrderedDict
 import asyncio
-from app.core.config import USER_STAKED_SHEET_NAME, logger
+from app.core.config import logger
 import pandas as pd
 from app.core.config import ETH_RPC_URL, DISTRIBUTION_ABI, DISTRIBUTION_PROXY_ADDRESS
 from web3 import AsyncWeb3
@@ -89,14 +88,13 @@ async def get_active_code_contributors(contributors_list):
 
 async def get_total_weights_and_contributors():
     try:
-        # Get data from repository instead of sheet
         user_staked_df = get_repository_data_as_dataframe(
-            UserStakedEventsRepository, "user_staked_events")
-        
+        UserStakedEventsRepository, "user_staked_events")
+    
         if user_staked_df.empty:
             logger.error("User staked events DataFrame is empty")
             return OrderedDict()
-        
+    
         # Rename columns to match the expected format
         user_staked_df = user_staked_df.rename(columns={
             'timestamp': 'Timestamp',
@@ -143,6 +141,5 @@ async def get_total_weights_and_contributors():
     except Exception as e:
         logger.exception(f"Error processing data: {str(e)}")
         return OrderedDict()
-
 
 # asyncio.run(get_total_weights_and_contributors())

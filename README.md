@@ -97,8 +97,6 @@ from web3 import AsyncWeb3
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(ETH_RPC_URL))
 ```
 
-NOTE: This project uses sheet utils and slack notification
-
 ## Emissions Repository
 
 The project now includes an Emissions Repository for storing and managing emission data for different categories:
