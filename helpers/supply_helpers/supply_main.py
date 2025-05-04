@@ -13,7 +13,8 @@ from dune_client.models import DuneError
 from app.core.config import logger
 from app.core.config import (supply_contract, distribution_contract,
                              MAINNET_BLOCK_1ST_JAN_2024, DEXSCREENER_URL, COINGECKO_HISTORICAL_PRICES,
-                             DUNE_API_KEY, DUNE_QUERY_ID, IMPLIED_PRICES_JSON, CIRC_SUPPLY_SHEET_NAME)
+                             DUNE_API_KEY, DUNE_QUERY_ID, IMPLIED_PRICES_JSON)
+from app.repository.circulating_supply_repository import CirculatingSupplyRepository
 from helpers.supply_helpers.get_burnt_and_locked_arbitrum import get_locked_amounts, get_burned_amounts
 from helpers.supply_helpers.get_historical_total_supply import get_total_supply_from_emissions_df
 from helpers.staking_helpers.get_emission_schedule_for_today import get_historical_emissions
@@ -74,36 +75,26 @@ async def get_combined_supply_data():
 
 def get_historical_circulating_supply(earliest_date: str) -> dict:
     try:
-        # Read the CircSupply sheet data
-        df = read_sheet_to_dataframe(CIRC_SUPPLY_SHEET_NAME)
-
-        # Convert date strings to datetime objects
-        df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
-
-        # Filter data from the earliest_date onwards
-        earliest_date = datetime.strptime(earliest_date, '%d/%m/%Y')
-        df = df[df['date'] >= earliest_date]
-
-        # Sort by date to ensure proper cumulative calculation
-        df = df.sort_values('date')
-
-        # Forward fill missing values to maintain cumulative nature
-        df['circulating_supply_at_that_date'] = df['circulating_supply_at_that_date'].fillna(method='ffill')
-        df['total_claimed_that_day'] = df['total_claimed_that_day'].fillna(0.0)  # Claims are 0 if no new claims
-
-        # Convert back to the required format
+        # Convert earliest_date string to datetime object
+        earliest_date_obj = datetime.strptime(earliest_date, '%d/%m/%Y').date()
+        
+        # Use the repository to get data from the database
+        repo = CirculatingSupplyRepository()
+        records = repo.get_by_date_range(earliest_date_obj, datetime.now().date())
+        
+        # Convert to the required format
         circulating_supply_data = {}
-        for _, row in df.iterrows():
-            date_str = row['date'].strftime('%d/%m/%Y')
+        for record in records:
+            date_str = record.date.strftime('%d/%m/%Y')
             circulating_supply_data[date_str] = {
-                "circulating_supply": float(row['circulating_supply_at_that_date']),
-                "total_claimed_that_day": float(row['total_claimed_that_day'])
+                "circulating_supply": float(record.circulating_supply_at_that_date),
+                "total_claimed_that_day": float(record.total_claimed_that_day)
             }
-
+        
         return circulating_supply_data
 
     except Exception as e:
-        logger.error(f"An error occurred while reading the CircSupply sheet: {str(e)}")
+        logger.error(f"An error occurred while fetching circulating supply data: {str(e)}")
         return {}
 
 
