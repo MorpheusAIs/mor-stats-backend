@@ -5,7 +5,7 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 import requests
-from app.core.config import (distribution_contract, USER_MULTIPLIER_SHEET_NAME, REWARD_SUM_SHEET_NAME)
+from app.core.config import distribution_contract
 from app.repository import UserMultiplierRepository, RewardSummaryRepository
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
 
@@ -46,68 +46,66 @@ def get_repository_data_as_dataframe(repository_class, table_name):
         return pd.DataFrame()
 
 
-def get_dataframe_from_sheet_name(sheet_name):
+def get_user_multiplier_dataframe():
     """
-    Get a DataFrame from a repository based on the sheet name.
-    
-    Args:
-        sheet_name: The name of the sheet (used to determine which repository to use)
+    Get a DataFrame from the repository.
         
     Returns:
         DataFrame with the repository data
     """
-    if sheet_name == USER_MULTIPLIER_SHEET_NAME:
-        df = get_repository_data_as_dataframe(UserMultiplierRepository, "user_multiplier")
+    df = get_repository_data_as_dataframe(UserMultiplierRepository, "user_multiplier")
+    
+    # Rename columns to match the expected format
+    if not df.empty:
+        df = df.rename(columns={
+            'timestamp': 'Timestamp',
+            'transaction_hash': 'TransactionHash',
+            'block_number': 'BlockNumber',
+            'pool_id': 'poolId',
+            'user_address': 'user',
+            'multiplier': 'multiplier',
+            'error_message': 'errorMessage'
+        })
+        
+        # Add missing columns that might be expected
+        if 'claimLockStart' not in df.columns:
+            df['claimLockStart'] = 0
+        if 'claimLockEnd' not in df.columns:
+            df['claimLockEnd'] = 0
+            
+        # Try to get claim lock data from the blockchain for each user
+        try:
+            for i, row in df.iterrows():
+                user = row['user']
+                pool_id = row['poolId']
+                try:
+                    user_data = distribution_contract.functions.usersData(user, pool_id).call()
+                    df.at[i, 'claimLockStart'] = user_data[2]  # Assuming index 2 is claimLockStart
+                    df.at[i, 'claimLockEnd'] = user_data[3]    # Assuming index 3 is claimLockEnd
+                except Exception as e:
+                    logger.warning(f"Could not get claim lock data for user {user} in pool {pool_id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error getting claim lock data: {str(e)}")
+            
+    return df
+
+def get_reward_summary_dataframe():
+    """
+    Get a DataFrame from the repository.
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    df = get_repository_data_as_dataframe(RewardSummaryRepository, "reward_summary")
         
         # Rename columns to match the expected format
-        if not df.empty:
-            df = df.rename(columns={
-                'timestamp': 'Timestamp',
-                'transaction_hash': 'TransactionHash',
-                'block_number': 'BlockNumber',
-                'pool_id': 'poolId',
-                'user_address': 'user',
-                'multiplier': 'multiplier',
-                'error_message': 'errorMessage'
-            })
-            
-            # Add missing columns that might be expected
-            if 'claimLockStart' not in df.columns:
-                df['claimLockStart'] = 0
-            if 'claimLockEnd' not in df.columns:
-                df['claimLockEnd'] = 0
-                
-            # Try to get claim lock data from the blockchain for each user
-            try:
-                for i, row in df.iterrows():
-                    user = row['user']
-                    pool_id = row['poolId']
-                    try:
-                        user_data = distribution_contract.functions.usersData(user, pool_id).call()
-                        df.at[i, 'claimLockStart'] = user_data[2]  # Assuming index 2 is claimLockStart
-                        df.at[i, 'claimLockEnd'] = user_data[3]    # Assuming index 3 is claimLockEnd
-                    except Exception as e:
-                        logger.warning(f"Could not get claim lock data for user {user} in pool {pool_id}: {str(e)}")
-            except Exception as e:
-                logger.error(f"Error getting claim lock data: {str(e)}")
-                
-        return df
-    elif sheet_name == REWARD_SUM_SHEET_NAME:
-        df = get_repository_data_as_dataframe(RewardSummaryRepository, "reward_summary")
+    if not df.empty:
+        df = df.rename(columns={
+            'category': 'Category',
+            'value': 'Value'
+        })
         
-        # Rename columns to match the expected format
-        if not df.empty:
-            df = df.rename(columns={
-                'category': 'Category',
-                'value': 'Value'
-            })
-            
-        return df
-    else:
-        # For other sheets, we might still need to use the original function
-        # This is a placeholder for EMISSIONS_SHEET_NAME which might still be read from a sheet
-        logger.warning(f"No repository mapping for sheet {sheet_name}, using original function")
-        return None  # Return None to indicate that we should use the original function
+    return df
 
 
 def get_todays_capital_emission():
@@ -152,7 +150,7 @@ def is_valid_stake(row):
 
 
 def analyze_mor_stakers():
-    df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+    df = get_user_multiplier_dataframe()
 
     stakers_by_pool = {0: set(), 1: set()}
     stakers_by_pool_and_date = defaultdict(lambda: defaultdict(set))
@@ -233,7 +231,7 @@ def analyze_mor_stakers():
 
 
 def calculate_average_multipliers():
-    df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+    df = get_user_multiplier_dataframe()
 
     try:
         # Filter valid stakes
@@ -275,7 +273,7 @@ def calculate_average_multipliers():
 def calculate_pool_rewards_summary():
     try:
         # Fetch data from reward_summary table
-        df = get_dataframe_from_sheet_name(REWARD_SUM_SHEET_NAME)
+        df = get_reward_summary_dataframe()
 
         # Initialize the pool_rewards dictionary
         pool_rewards = defaultdict(lambda: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0})
@@ -303,7 +301,7 @@ def calculate_pool_rewards_summary():
 
 
 def get_wallet_stake_info():
-    df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+    df = get_user_multiplier_dataframe()
 
     wallet_info = {
         'combined': {},
