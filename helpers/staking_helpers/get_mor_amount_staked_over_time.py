@@ -6,8 +6,7 @@ from datetime import datetime
 import pandas as pd
 from web3 import AsyncWeb3
 
-from app.core.config import (ETH_RPC_URL, USER_MULTIPLIER_SHEET_NAME, DISTRIBUTION_PROXY_ADDRESS, DISTRIBUTION_ABI,
-                             logger)
+from app.core.config import (ETH_RPC_URL, DISTRIBUTION_PROXY_ADDRESS, DISTRIBUTION_ABI, logger)
 from app.repository import UserMultiplierRepository
 
 MAX_RETRIES = 3

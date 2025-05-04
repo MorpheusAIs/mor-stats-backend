@@ -1,11 +1,7 @@
-import json
 from collections import OrderedDict, defaultdict
 from datetime import datetime
 import pandas as pd
-from app.core.config import (logger, USER_STAKED_SHEET_NAME,
-                             USER_WITHDRAWN_SHEET_NAME,
-                             OVERPLUS_BRIDGED_SHEET_NAME, distribution_contract,
-                             MAINNET_BLOCK_1ST_JAN_2024, EMISSIONS_SHEET_NAME)
+from app.core.config import (logger,distribution_contract, MAINNET_BLOCK_1ST_JAN_2024)
 from app.repository import (
     UserStakedEventsRepository,
     UserWithdrawnEventsRepository,
@@ -276,7 +272,7 @@ def get_all_claim_metrics():
     claimed_code_rewards = 0
 
     try:
-        emissions_data = read_emission_schedule(today, EMISSIONS_SHEET_NAME)
+        emissions_data = read_emission_schedule(today)
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 

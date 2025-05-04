@@ -1,16 +1,16 @@
 import pandas as pd
-from typing import Dict, Union
+from pandas import DataFrame
+from typing import Dict
 from datetime import datetime
 import logging
-import time
 from app.repository import EmissionRepository
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def get_emissions_data():
+def get_emissions_data() -> DataFrame:
     """
-    Get emissions data from the repository or a sheet as fallback.
+    Get emissions data from the repository.
         
     Returns:
         DataFrame with the emissions data
@@ -18,7 +18,7 @@ def get_emissions_data():
     try:
         # First try to get data from the repository
         emission_repo = EmissionRepository()
-        emissions = emission_repo.get_all(limit=1000)  # Get all emission records
+        emissions = emission_repo.get_all(limit=10000)  # Get all emission records
         
         if emissions:
             # Convert to DataFrame
@@ -42,32 +42,19 @@ def get_emissions_data():
         logger.error(f"Error reading emissions data: {str(e)}")
         raise
 
-
-def read_emission_schedule(today_date: datetime, emissions_data: Union[str, pd.DataFrame]) -> Dict:
+def read_emission_schedule(today_date: datetime) -> Dict:
     """
-    Read the emission schedule from the repository, Google Sheets, or a provided DataFrame 
-    and return processed data for the current day.
+    Read the emission schedule from the repository and return processed data for the current day.
 
     Args:
     today_date (datetime): Current date
-    emissions_data (Union[str, pd.DataFrame]): Either the name of the Google Sheet or a DataFrame containing emission data
 
     Returns:
     Dict: Dictionary containing processed emission data
     """
     try:
-        time.sleep(5)
-        # If emissions_data is a string, assume it's a sheet name and fetch the data
-        if isinstance(emissions_data, str):
-            try:
-                emissions_df = get_emissions_data(emissions_data)
-            except Exception as e:
-                logger.error(f"Error reading data source '{emissions_data}': {str(e)}")
-                raise
-        elif isinstance(emissions_data, pd.DataFrame):
-            emissions_df = emissions_data
-        else:
-            raise ValueError("emissions_data must be either a sheet name (str) or a pandas DataFrame")
+
+        emissions_df = get_emissions_data()
 
         emissions_df = emissions_df.dropna(axis=1, how='all')  # Remove empty columns
 
@@ -131,7 +118,7 @@ def get_historical_emissions():
     try:
         # Try to get data from the repository
         emission_repo = EmissionRepository()
-        emissions = emission_repo.get_all(limit=1000)  # Get all emission records
+        emissions = emission_repo.get_all(limit=10000)
         
         if emissions:
             # Sort by date in descending order

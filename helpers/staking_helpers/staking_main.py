@@ -5,8 +5,7 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 import requests
-from app.core.config import (distribution_contract, EMISSIONS_SHEET_NAME,
-                             USER_MULTIPLIER_SHEET_NAME, REWARD_SUM_SHEET_NAME)
+from app.core.config import (distribution_contract, USER_MULTIPLIER_SHEET_NAME, REWARD_SUM_SHEET_NAME)
 from app.repository import UserMultiplierRepository, RewardSummaryRepository
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
 
@@ -115,7 +114,7 @@ def get_todays_capital_emission():
     mor_daily_emission = 0
 
     today = datetime.today()
-    emissions_data = read_emission_schedule(today, EMISSIONS_SHEET_NAME)
+    emissions_data = read_emission_schedule(today)
 
     mor_daily_emission = float(emissions_data['new_emissions']['Capital Emission'])
 
@@ -443,7 +442,7 @@ async def get_analyze_mor_master_dict():
     multiplier_analysis = calculate_average_multipliers()
     stakereward_analysis = calculate_pool_rewards_summary()
     today = datetime.today()
-    emissionreward_analysis = read_emission_schedule(today, EMISSIONS_SHEET_NAME)
+    emissionreward_analysis = read_emission_schedule(today)
 
     # Convert date objects to strings
     staker_analysis['daily_unique_stakers'] = {
