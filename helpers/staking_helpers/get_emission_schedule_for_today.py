@@ -3,35 +3,50 @@ from typing import Dict, Union
 from datetime import datetime
 import logging
 import time
-from app.core.config import EMISSIONS_SHEET_NAME
+from app.repository import EmissionRepository
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
-def get_emissions_data(sheet_name):
+def get_emissions_data():
     """
-    Get emissions data from a sheet or potentially a repository in the future.
-    
-    Args:
-        sheet_name: The name of the sheet to read from
+    Get emissions data from the repository or a sheet as fallback.
         
     Returns:
         DataFrame with the emissions data
     """
     try:
-        # For now, we still use the sheet function since we don't have a repository for emissions
-        # In the future, this could be updated to use a repository
-        emissions_df = read_sheet_to_dataframe(sheet_name)
-        return emissions_df
+        # First try to get data from the repository
+        emission_repo = EmissionRepository()
+        emissions = emission_repo.get_all(limit=1000)  # Get all emission records
+        
+        if emissions:
+            # Convert to DataFrame
+            emissions_data = [{
+                'Day': emission.day,
+                'Date': emission.date,
+                'Capital Emission': float(emission.capital_emission),
+                'Code Emission': float(emission.code_emission),
+                'Compute Emission': float(emission.compute_emission),
+                'Community Emission': float(emission.community_emission),
+                'Protection Emission': float(emission.protection_emission),
+                'Total Emission': float(emission.total_emission),
+                'Total Supply': float(emission.total_supply)
+            } for emission in emissions]
+            
+            emissions_df = pd.DataFrame(emissions_data)
+            logger.info(f"Retrieved {len(emissions)} emission records from repository")
+            return emissions_df
+            
     except Exception as e:
-        logger.error(f"Error reading emissions data from '{sheet_name}': {str(e)}")
+        logger.error(f"Error reading emissions data: {str(e)}")
         raise
 
 
 def read_emission_schedule(today_date: datetime, emissions_data: Union[str, pd.DataFrame]) -> Dict:
     """
-    Read the emission schedule from Google Sheets or a provided DataFrame and return processed data for the current day.
+    Read the emission schedule from the repository, Google Sheets, or a provided DataFrame 
+    and return processed data for the current day.
 
     Args:
     today_date (datetime): Current date
@@ -107,45 +122,28 @@ def read_emission_schedule(today_date: datetime, emissions_data: Union[str, pd.D
 
 
 def get_historical_emissions():
-    today_date = datetime.today()
-    emissions_data = EMISSIONS_SHEET_NAME
+    """
+    Get historical emissions data from the repository.
+    
+    Returns:
+        Dictionary with dates as keys and Total Emission values
+    """
     try:
-        time.sleep(5)
-        # If emissions_data is a string, assume it's a sheet name and fetch the data
-        if isinstance(emissions_data, str):
-            try:
-                emissions_df = get_emissions_data(emissions_data)
-            except Exception as e:
-                logger.error(f"Error reading data source '{emissions_data}': {str(e)}")
-                raise
-        elif isinstance(emissions_data, pd.DataFrame):
-            emissions_df = emissions_data
-        else:
-            raise ValueError("emissions_data must be either a sheet name (str) or a pandas DataFrame")
-
-        emissions_df = emissions_df.dropna(axis=1, how='all')  # Remove empty columns
-
-        # Strip whitespace from column names
-        emissions_df.columns = emissions_df.columns.str.strip()
-
-        # Convert the 'Date' column to datetime format (YYYY-MM-DD)
-        emissions_df['Date'] = pd.to_datetime(emissions_df['Date'], format='%Y-%m-%d', errors='coerce').dt.normalize()
-
-        # Normalize today's date (remove any time component)
-        today_date_normalized = pd.to_datetime(today_date).normalize()
-
-        # Filter data up to today's date
-        df_until_today = emissions_df[emissions_df['Date'] <= today_date_normalized]
-
-        # Sort dataframe by date in descending order (latest to earliest)
-        df_until_today = df_until_today.sort_values('Date', ascending=False)
-
-        # Create the dictionary with dates as keys and Total Emission values
-        historical_emissions_dict = {row['Date'].strftime('%d/%m/%Y'): row['Total Emission']
-                                     for _, row in df_until_today.iterrows()}
-
-        return historical_emissions_dict
-
+        # Try to get data from the repository
+        emission_repo = EmissionRepository()
+        emissions = emission_repo.get_all(limit=1000)  # Get all emission records
+        
+        if emissions:
+            # Sort by date in descending order
+            emissions.sort(key=lambda x: x.date, reverse=True)
+            
+            # Create the dictionary with dates as keys and Total Emission values
+            historical_emissions_dict = {
+                emission.date.strftime('%d/%m/%Y'): float(emission.total_emission)
+                for emission in emissions
+            }
+            
+            return historical_emissions_dict
     except Exception as e:
-        logger.error(f"Error processing emission schedule: {str(e)}")
+        logger.error(f"Error getting historical emissions from repository: {str(e)}")
         raise

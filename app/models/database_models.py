@@ -97,3 +97,18 @@ class OverplusBridgedEvent(BaseModel):
     amount: Decimal = Field(..., description="Amount bridged")
     unique_id: str = Field(..., description="Unique ID")
     created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
+
+
+class Emission(BaseModel):
+    """Model for emissions table."""
+    id: Optional[int] = Field(None, description="Primary key")
+    day: int = Field(..., description="Day number")
+    date: date = Field(..., description="Date of emission")
+    capital_emission: Decimal = Field(..., description="Capital emission amount")
+    code_emission: Decimal = Field(..., description="Code emission amount")
+    compute_emission: Decimal = Field(..., description="Compute emission amount")
+    community_emission: Decimal = Field(..., description="Community emission amount")
+    protection_emission: Decimal = Field(..., description="Protection emission amount")
+    total_emission: Decimal = Field(..., description="Total emission amount")
+    total_supply: Decimal = Field(..., description="Total supply at this date")
+    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")

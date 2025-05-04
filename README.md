@@ -73,6 +73,11 @@ SLACK_URL=
 - `i_update_user_claim_locked_events.py`
 - `ii_update_user_multipliers.py`
 - `iii_update_total_daily_rewards.py`
+- `iiii_update_circulating_supply.py`
+- `iv_update_user_staked_events.py`
+- `v_update_user_withdrawn_events.py`
+- `vi_update_overplus_bridged_events.py`
+- `vii_update_emissions.py` (new)
 
 2) `i_update_user_claim_locked_events.py` fetches the latest `UserClaimLocked` events
 from the blockchain and populates the database with that data for `UserClaimLocked`.
@@ -81,6 +86,7 @@ for each address in an async fashion using the async provider and uploads to the
 4) `iii_update_total_daily_rewards.py`fetches the `UserMultiplier` data and for each address, it
 calculates the Daily and Total Staked Rewards using the `getCurrentUserReward` ABI function and then
 uploads the results to the `RewardSum` database.
+5) `vii_update_emissions.py` updates the emissions data in the database. This script can import emissions data from a CSV file or directly from a string in TSV format.
 
 ### Details
 
@@ -92,3 +98,33 @@ w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(ETH_RPC_URL))
 ```
 
 NOTE: This project uses sheet utils and slack notification
+
+## Emissions Repository
+
+The project now includes an Emissions Repository for storing and managing emission data for different categories:
+- Capital Emission
+- Code Emission
+- Compute Emission
+- Community Emission
+- Protection Emission
+
+### Setting Up Emissions Repository
+
+1. Run the SQL migration script to create the emissions table:
+   ```bash
+   psql -U your_username -d your_database -f scripts/migrations/create_emissions_table.sql
+   ```
+
+2. Import the initial emissions data from the CSV file:
+   ```bash
+   python scripts/import_initial_emissions.py
+   ```
+   
+   This script reads data from `data/MASTER MOR EXPLORER - Emissions.csv` and imports it into the database.
+
+3. To update emissions data, use the `vii_update_emissions.py` script:
+   ```bash
+   python scripts/vii_update_emissions.py --file path/to/emissions.csv
+   ```
+
+For more details on the Emissions Repository, see [UpdateEmissions.md](docs/UpdateEmissions.md).

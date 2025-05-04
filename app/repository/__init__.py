@@ -3,6 +3,7 @@ Repository package for database operations.
 """
 from app.repository.base_repository import BaseRepository
 from app.repository.circulating_supply_repository import CirculatingSupplyRepository
+from app.repository.emission_repository import EmissionRepository
 from app.repository.overplus_bridged_events_repository import OverplusBridgedEventsRepository
 from app.repository.reward_repository import RewardDetailRepository, RewardSummaryRepository
 from app.repository.user_claim_locked_repository import UserClaimLockedRepository
@@ -13,6 +14,7 @@ from app.repository.user_withdrawn_events_repository import UserWithdrawnEventsR
 __all__ = [
     'BaseRepository',
     'CirculatingSupplyRepository',
+    'EmissionRepository',
     'OverplusBridgedEventsRepository',
     'RewardDetailRepository',
     'RewardSummaryRepository',

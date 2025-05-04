@@ -13,6 +13,7 @@ from scripts.iiii_update_circulating_supply import update_circulating_supply
 from scripts.iv_update_user_staked_events import process_user_staked_events
 from scripts.v_update_user_withdrawn_events import process_user_withdrawn_events
 from scripts.vi_update_overplus_bridged_events import process_overplus_bridged_events
+from scripts.vii_update_emissions import update_emissions
 
 # Configure logging
 logging.basicConfig(
@@ -103,6 +104,12 @@ async def run_update_process():
         logger.info("Step 7: Updating Overplus Bridged Events")
         process_overplus_bridged_events()
         logger.info("Step 7 completed successfully")
+        time.sleep(5)
+
+        # Step 8: Update Emissions Data
+        logger.info("Step 8: Updating Emissions Data")
+        update_emissions()
+        logger.info("Step 8 completed successfully")
         time.sleep(5)
 
         end_time = datetime.now()
