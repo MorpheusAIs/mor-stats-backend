@@ -3,13 +3,14 @@ import logging
 from dateutil import parser
 from web3 import AsyncWeb3
 from decimal import Decimal
-from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from app.models.database_models import UserMultiplier
+from app.repository import UserMultiplierRepository
 from app.web3.web3_wrapper import get_block_number
+from helpers.database_helpers.db_helper import get_last_block_from_db
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
@@ -17,68 +18,62 @@ RETRY_DELAY = 5  # seconds
 BATCH_SIZE = 50
 
 INPUT_TABLE_NAME = "user_claim_locked"
-OUTPUT_TABLE_NAME = "user_multiplier"
+TABLE_NAME = "user_multiplier"
+EVENT_NAME = "UserMultiplier"
 
 RPC_URL = ETH_RPC_URL
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(ETH_RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
 
-def ensure_table_exists():
-    """Create the output table if it doesn't exist"""
-    db = get_db()
+def ensure_user_multiplier_table_exists():
+    """Create the table if it doesn't exist, with columns based on event structure"""
     try:
+        db = get_db()
+        
         with db.cursor() as cursor:
+            # Get column definitions
+            columns = [
+                "user_claim_locked_id INTEGER REFERENCES user_claim_locked(id)",
+                "timestamp TIMESTAMP NOT NULL",
+                "transaction_hash TEXT NOT NULL",
+                "block_number BIGINT NOT NULL",
+                "pool_id INTEGER NOT NULL",
+                "user varchar(42) NOT NULL",
+                "claim_lock_start BIGINT NOT NULL",
+                "claim_lock_end BIGINT NOT NULL"
+                "multiplier NUMERIC(78, 0)",
+            ]
+            
+            # Create table if it doesn't exist
             create_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {OUTPUT_TABLE_NAME} (
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
                 id SERIAL PRIMARY KEY,
-                user_claim_locked_id INTEGER REFERENCES {INPUT_TABLE_NAME}(id),
-                timestamp TIMESTAMP NOT NULL,
-                transaction_hash TEXT NOT NULL,
-                block_number BIGINT NOT NULL,
-                pool_id INTEGER NOT NULL,
-                user_address TEXT NOT NULL,
-                multiplier NUMERIC(78, 0),
-                error_message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                {', '.join(columns)}
             )
             """
             cursor.execute(create_table_query)
-
+            
             # Create indexes for efficient lookups
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_user ON {OUTPUT_TABLE_NAME} (user_address)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_pool ON {OUTPUT_TABLE_NAME} (pool_id)")
-            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_unique ON {OUTPUT_TABLE_NAME} (user_address, pool_id, block_number)")
-
-            logger.info(f"Ensured table {OUTPUT_TABLE_NAME} exists with required structure")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_user ON {TABLE_NAME} (user_address)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_pool ON {TABLE_NAME} (pool_id)")
+            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_unique ON {TABLE_NAME} (user_address, pool_id, block_number)")
+            
+            cursor.commit()
+            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
     except Exception as e:
         logger.error(f"Error ensuring table exists: {str(e)}")
         raise
 
 
-def get_unprocessed_records():
+def get_unprocessed_user_multiplier_records():
     """Get records from user_claim_locked that haven't been processed yet"""
     try:
-        db = get_db()
-        with db.cursor() as cursor:
-            query = f"""
-            SELECT ucl.id, ucl.timestamp, ucl.transaction_hash, ucl.block_number, ucl.poolid, ucl.user
-            FROM {INPUT_TABLE_NAME} ucl
-            LEFT JOIN {OUTPUT_TABLE_NAME} um 
-            ON ucl.id = um.user_claim_locked_id
-            WHERE um.id IS NULL
-            """
-            cursor.execute(query)
-
-            columns = ["id", "timestamp", "transaction_hash", "block_number", "poolid", "user"]
-            records = []
-
-            for row in cursor.fetchall():
-                record = dict(zip(columns, row))
-                records.append(record)
-
-            logger.info(f"Found {len(records)} unprocessed records")
-            return records
+        repository = UserMultiplierRepository()
+        records = repository.get_unprocessed_records()
+        
+        logger.info(f"Found {len(records)} unprocessed records")
+        return records
     except Exception as e:
         logger.error(f"Error getting unprocessed records: {str(e)}")
         raise
@@ -107,7 +102,6 @@ async def get_multiplier(record):
                 'pool_id': pool_id,
                 'user_address': user,
                 'multiplier': multiplier,
-                'error_message': None
             }
         except Exception as e:
             if 'Too Many Requests' in str(e) and attempt < MAX_RETRIES - 1:
@@ -123,8 +117,7 @@ async def get_multiplier(record):
                     'block_number': record['block_number'],
                     'pool_id': int(record['poolid']),
                     'user_address': record['user'],
-                    'multiplier': None,
-                    'error_message': str(e)
+                    'multiplier': None
                 }
     return None
 
@@ -143,53 +136,27 @@ def format_multiplier(value):
     return decimal_value
 
 
-def insert_multipliers(records):
+def insert_user_multiplier_events(user_multiplier_events: list[UserMultiplier]):
     """Insert processed multipliers into the database"""
     try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Prepare values for insert
-                values = []
-                for record in records:
-                    multiplier = format_multiplier(record['multiplier'])
-
-                    values.append((
-                        record['id'],  # user_claim_locked_id
-                        record['timestamp'],
-                        record['transaction_hash'],
-                        record['block_number'],
-                        record['pool_id'],
-                        record['user_address'],
-                        multiplier,
-                        record['error_message']
-                    ))
-
-                # Insert data in batch
-                insert_query = f"""
-                INSERT INTO {OUTPUT_TABLE_NAME} 
-                (user_claim_locked_id, timestamp, transaction_hash, block_number, pool_id, user_address, multiplier, error_message)
-                VALUES %s
-                ON CONFLICT (user_address, pool_id, block_number) DO UPDATE 
-                SET multiplier = EXCLUDED.multiplier, error_message = EXCLUDED.error_message
-                """
-                execute_values(cursor, insert_query, values)
-
-                logger.info(f"Inserted {len(values)} new multiplier records into database")
+        repository = UserMultiplierRepository()
+        repository.bulk_insert(user_multiplier_events)
+        logger.info(f"Inserted {len(user_multiplier_events)} new multiplier records into database")
     except Exception as e:
         logger.error(f"Error inserting multipliers: {str(e)}")
         raise
 
 
-async def calculate_user_multipliers():
+async def process_user_multiplier_events():
     try:
         # Ensure output table exists
-        ensure_table_exists()
+        ensure_user_multiplier_table_exists()
 
         # Get unprocessed records from input table
-        records = get_unprocessed_records()
+        records = get_unprocessed_user_multiplier_records()
 
         if not records:
-            logger.info("No new records to process")
+            logger.info(f"No new records to process for {EVENT_NAME}")
             return
 
         # Split into batches
@@ -202,8 +169,28 @@ async def calculate_user_multipliers():
             # Process batch and get multipliers
             processed_records = await process_batch(batch)
 
+            # Convert to UserMultiplier objects
+            user_multiplier_events = []
+            for record in processed_records:
+                if record:
+                    multiplier = format_multiplier(record['multiplier'])
+                    
+                    user_multiplier = UserMultiplier(
+                        id=None,
+                        user_claim_locked_id=record['id'],
+                        timestamp=record['timestamp'],
+                        transaction_hash=record['transaction_hash'],
+                        block_number=record['block_number'],
+                        pool_id=record['pool_id'],
+                        user_address=record['user_address'],
+                        multiplier=multiplier
+                    )
+                    
+                    user_multiplier_events.append(user_multiplier)
+
             # Insert results into database
-            insert_multipliers(processed_records)
+            if user_multiplier_events:
+                insert_user_multiplier_events(user_multiplier_events)
 
             total_processed += len(batch)
             logger.info(f"Completed batch {i + 1}/{len(batches)}")
@@ -212,13 +199,13 @@ async def calculate_user_multipliers():
             if i < len(batches) - 1:
                 await asyncio.sleep(1)
 
-        logger.info(f"Successfully calculated and stored multipliers for {total_processed} users")
+        logger.info(f"Successfully processed and stored {EVENT_NAME} for {total_processed} users")
 
     except Exception as e:
-        logger.error(f"Error in calculate_user_multipliers: {str(e)}")
+        logger.error(f"Error in process_user_multiplier_events: {str(e)}")
         logger.exception("Exception details:")
         raise
 
 
 if __name__ == "__main__":
-    asyncio.run(calculate_user_multipliers())
+    asyncio.run(process_user_multiplier_events())

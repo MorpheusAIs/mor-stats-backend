@@ -160,8 +160,6 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
 
         # Extract fields from the first record to determine columns
         sample = records[0].model_dump(exclude_none=True)
-        if 'id' in sample:
-            del sample['id']  # Remove id field for insertion
 
         columns = list(sample.keys())
         placeholders = ', '.join(['%s'] * len(columns))
@@ -171,8 +169,6 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         values_list = []
         for record in records:
             record_dict = record.model_dump(exclude_none=True)
-            if 'id' in record_dict:
-                del record_dict['id']
             values_list.append(tuple(record_dict[col] for col in columns))
 
         # Build and execute the query with ON CONFLICT handling
@@ -181,8 +177,7 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         VALUES ({placeholders})
         ON CONFLICT (user_address, pool_id, block_number) 
         DO UPDATE SET 
-            multiplier = EXCLUDED.multiplier, 
-            error_message = EXCLUDED.error_message
+            multiplier = EXCLUDED.multiplier
         """
 
         with self.db.transaction() as cursor:
