@@ -14,10 +14,10 @@ class UserClaimLocked(BaseModel):
     timestamp: datetime = Field(..., description="Event timestamp")
     transaction_hash: str = Field(..., description="Transaction hash")
     block_number: int = Field(..., description="Block number")
-    poolid: int = Field(..., description="Pool ID")
+    pool_id: int = Field(..., description="Pool ID")
     user: str = Field(..., description="User address")
-    amount: str = Field(..., description="Amount")
-
+    claim_lock_start: str = Field(..., description="ClaimLockStart")
+    claim_lock_end: str = Field(..., description="ClaimLockEnd")
 
 class UserMultiplier(BaseModel):
     """Model for user_multiplier table."""
