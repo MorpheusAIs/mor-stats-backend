@@ -1,11 +1,13 @@
 import logging
 from datetime import datetime
-from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from app.models.database_models import OverplusBridgedEvent
+from app.repository import OverplusBridgedEventsRepository
 from app.web3.web3_wrapper import Web3Provider
 from helpers.database_helpers.db_helper import get_last_block_from_db
+from helpers.web3_helper import get_events_in_batches
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,99 +21,62 @@ RPC_URL = ETH_RPC_URL
 web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
-def ensure_table_exists():
-    """Create the table if it doesn't exist"""
-
-    db = get_db()
+def ensure_overplus_bridged_events_table_exists():
+    """Create the table if it doesn't exist, with columns based on event structure"""
     try:
+        db = get_db()
+        
         with db.cursor() as cursor:
+            # Get column definitions
+            columns = [
+                "timestamp TIMESTAMP NOT NULL",
+                "transaction_hash TEXT NOT NULL",
+                "block_number BIGINT NOT NULL",
+                "amount NUMERIC(78, 0) NOT NULL",
+                "unique_id TEXT NOT NULL",
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ]
+            
+            # Create table if it doesn't exist
             create_table_query = f"""
             CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
                 id SERIAL PRIMARY KEY,
-                timestamp TIMESTAMP NOT NULL,
-                transaction_hash TEXT NOT NULL,
-                block_number BIGINT NOT NULL,
-                amount NUMERIC(78, 0) NOT NULL,
-                unique_id TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                {', '.join(columns)}
             )
             """
             cursor.execute(create_table_query)
-
+            
             # Create indexes for efficient lookups
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_block ON {TABLE_NAME} (block_number)")
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_unique_id ON {TABLE_NAME} (unique_id)")
-
+            
             # Create a unique index on transaction hash and block number
             # to prevent duplicate event processing
             cursor.execute(f"""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_tx_unique 
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_tx_unique
             ON {TABLE_NAME} (transaction_hash, block_number)
             """)
-
+            
+            cursor.commit()
             logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
     except Exception as e:
         logger.error(f"Error ensuring table exists: {str(e)}")
         raise
 
 
-def get_events_in_batches(start_block, end_block, event_name):
-    """Process blockchain events in batches to handle large block ranges"""
-    current_start = start_block
-    while current_start <= end_block:
-        current_end = min(current_start + BATCH_SIZE, end_block)
-        try:
-            yield from get_events(current_start, current_end, event_name)
-        except Exception as e:
-            logger.error(f"Error getting events from block {current_start} to {current_end}: {str(e)}")
-        current_start = current_end + 1
-
-
-def get_events(from_block, to_block, event_name):
-    """Get blockchain events for the specified block range"""
+def insert_overplus_bridged_events(overplus_bridged_events: list[OverplusBridgedEvent]):
+    """Insert overplus bridged events into the database using the repository"""
     try:
-        event_filter = getattr(contract.events, event_name).create_filter(from_block=from_block, to_block=to_block)
-        return event_filter.get_all_entries()
+        if not overplus_bridged_events:
+            return 0
+            
+        repository = OverplusBridgedEventsRepository()
+        inserted_count = repository.bulk_insert(overplus_bridged_events)
+        
+        logger.info(f"Inserted {inserted_count} new {EVENT_NAME} events into database")
+        return inserted_count
     except Exception as e:
-        logger.error(f"Error getting events for {event_name} from block {from_block} to {to_block}: {str(e)}")
-        return []
-
-
-def insert_events_to_db(events_data):
-    """Insert event data into the database"""
-    if not events_data:
-        return 0
-
-    db = get_db()
-    try:
-        with db.cursor() as cursor:
-            # Prepare values for insertion
-            values = [
-                (
-                    event['timestamp'],
-                    event['transaction_hash'],
-                    event['block_number'],
-                    event['amount'],
-                    event['unique_id']
-                )
-                for event in events_data
-            ]
-
-            # Insert data with ON CONFLICT DO NOTHING to handle any duplicates
-            insert_query = f"""
-            INSERT INTO {TABLE_NAME} 
-            (timestamp, transaction_hash, block_number, amount, unique_id)
-            VALUES %s
-            ON CONFLICT (transaction_hash, block_number) DO NOTHING
-            """
-
-            execute_values(cursor, insert_query, values)
-
-            inserted_count = cursor.rowcount
-            logger.info(f"Inserted {inserted_count} new overplus bridged events into database")
-            return inserted_count
-    except Exception as e:
-        logger.error(f"Error inserting overplus bridged events to database: {str(e)}")
+        logger.error(f"Error inserting {EVENT_NAME} events to database: {str(e)}")
         raise
 
 
@@ -119,7 +84,7 @@ def process_overplus_bridged_events():
     """Main function to process OverplusBridged events and store them in PostgreSQL"""
     try:
         # Ensure database table exists
-        ensure_table_exists()
+        ensure_overplus_bridged_events_table_exists()
 
         # Get the latest block number from the chain
         latest_block = web3.eth.get_block('latest')['number']
@@ -143,25 +108,26 @@ def process_overplus_bridged_events():
 
         if events:
             # Process events
-            processed_events = []
+            overplus_bridged_events = []
             for event in events:
                 block_timestamp = web3.eth.get_block(event['blockNumber'])['timestamp']
 
                 # Note the special handling for uniqueId - converting to hex
                 unique_id_hex = event['args'].get('uniqueId', b'').hex()
 
-                # Format event data for storage
-                event_data = {
-                    'timestamp': datetime.fromtimestamp(block_timestamp),
-                    'transaction_hash': event['transactionHash'].hex(),
-                    'block_number': event['blockNumber'],
-                    'amount': int(event['args'].get('amount', 0)),  # Store raw amount
-                    'unique_id': unique_id_hex
-                }
-                processed_events.append(event_data)
+                # Create OverplusBridgedEvent object
+                overplus_bridged_event = OverplusBridgedEvent(
+                    id=None,
+                    timestamp=datetime.fromtimestamp(block_timestamp),
+                    transaction_hash=event['transactionHash'].hex(),
+                    block_number=event['blockNumber'],
+                    amount=int(event['args'].get('amount', 0)),  # Store raw amount
+                    unique_id=unique_id_hex
+                )
+                overplus_bridged_events.append(overplus_bridged_event)
 
             # Insert events into database
-            inserted_count = insert_events_to_db(processed_events)
+            inserted_count = insert_overplus_bridged_events(overplus_bridged_events)
 
             logger.info(f"Successfully processed and stored {inserted_count} new {EVENT_NAME} events")
             return inserted_count
