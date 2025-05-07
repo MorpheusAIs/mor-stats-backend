@@ -2,10 +2,11 @@ import logging
 from datetime import datetime
 
 from app.core.config import distribution_contract, ETH_RPC_URL
+from app.db.database import get_db
+from app.models.database_models import UserStakedEvent
+from app.repository import UserStakedEventsRepository
 from app.web3.web3_wrapper import Web3Provider
 from helpers.database_helpers.db_helper import get_last_block_from_db
-from helpers.database_helpers.user_staked_events_db_helper import ensure_user_staked_events_table_exists, \
-    insert_events_to_db
 from helpers.slack import send_slack_notification
 from helpers.web3_helper import get_events_in_batches
 
@@ -14,13 +15,61 @@ logger = logging.getLogger(__name__)
 START_BLOCK = 20180927
 BATCH_SIZE = 1000000
 TABLE_NAME = "user_staked_events"
+EVENT_NAME = "UserStaked"
 
 RPC_URL = ETH_RPC_URL
 web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
+def ensure_user_staked_events_table_exists():
+    """Create the user staked events table if it doesn't exist, with columns based on event structure"""
+    try:
+        db = get_db()
+        
+        with db.cursor() as cursor:
+            # Get column definitions
+            columns = [
+                "timestamp TIMESTAMP NOT NULL",
+                "transaction_hash TEXT NOT NULL",
+                "block_number BIGINT NOT NULL",
+                "pool_id INTEGER NOT NULL",
+                "user_address TEXT NOT NULL",
+                "amount BIGINT NOT NULL"
+            ]
+            
+            # Create table if it doesn't exist
+            create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                {', '.join(columns)}
+            )
+            """
+            cursor.execute(create_table_query)
+            
+            # Create indexes for efficient lookups
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_block_number ON {TABLE_NAME} (block_number)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_user ON {TABLE_NAME} (user_address)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_pool ON {TABLE_NAME} (pool_id)")
+            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_tx_block ON {TABLE_NAME} (transaction_hash, block_number)")
+            
+            cursor.commit()
+            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+    except Exception as e:
+        logger.error(f"Error ensuring table exists: {str(e)}")
+        raise
+
+def insert_user_staked_events(user_staked_events: list[UserStakedEvent]):
+    """Insert user staked events into the database using the repository"""
+    try:
+        repository = UserStakedEventsRepository()
+        inserted_count = repository.bulk_insert(user_staked_events)
+        logger.info(f"Inserted {inserted_count} new {EVENT_NAME} events into database")
+        return inserted_count
+    except Exception as e:
+        logger.error(f"Error inserting events to database: {str(e)}")
+        raise
+
 def process_user_staked_events():
-    event_name = "UserStaked"
     """Main function to process UserStaked events and store them in PostgreSQL"""
     try:
         # Ensure database table exists
@@ -43,33 +92,34 @@ def process_user_staked_events():
             return 0
 
         # Get events in batches
-        events = list(get_events_in_batches(start_block, latest_block, event_name, BATCH_SIZE))
-        logger.info(f"Processing {len(events)} new {event_name} events from block {start_block} to {latest_block}")
+        events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME, BATCH_SIZE))
+        logger.info(f"Processing {len(events)} new {EVENT_NAME} events from block {start_block} to {latest_block}")
 
         if events:
             # Process events
-            processed_events = []
+            user_staked_events = []
             for event in events:
                 block_timestamp = web3.eth.get_block(event['blockNumber'])['timestamp']
 
-                # Format event data for storage
-                event_data = {
-                    'timestamp': datetime.fromtimestamp(block_timestamp),
-                    'transaction_hash': event['transactionHash'].hex(),
-                    'block_number': event['blockNumber'],
-                    'pool_id': int(event['args'].get('poolId', 0)),
-                    'user_address': event['args'].get('user', ''),
-                    'amount': int(event['args'].get('amount', 0))  # Store raw amount
-                }
-                processed_events.append(event_data)
+                # Create UserStakedEvent object
+                user_staked_event = UserStakedEvent(
+                    id=None,
+                    timestamp=datetime.fromtimestamp(block_timestamp),
+                    transaction_hash=event['transactionHash'].hex(),
+                    block_number=event['blockNumber'],
+                    pool_id=int(event['args'].get('poolId', 0)),
+                    user_address=event['args'].get('user', ''),
+                    amount=int(event['args'].get('amount', 0))  # Store raw amount
+                )
+                user_staked_events.append(user_staked_event)
 
             # Insert events into database
-            inserted_count = insert_events_to_db(processed_events)
+            inserted_count = insert_user_staked_events(user_staked_events)
 
-            logger.info(f"Successfully processed and stored {inserted_count} new events for {event_name}")
+            logger.info(f"Successfully processed and stored {inserted_count} new events for {EVENT_NAME}")
             return inserted_count
         else:
-            logger.info(f"No new events found for {event_name}.")
+            logger.info(f"No new events found for {EVENT_NAME}.")
             return 0
 
     except Exception as e:
@@ -81,8 +131,8 @@ if __name__ == "__main__":
     try:
         count = process_user_staked_events()
         if count > 0:
-            send_slack_notification(f"Successfully processed and stored {count} new UserStaked events")
+            logger.info(f"Successfully processed and stored {count} new {EVENT_NAME} events")
         else:
-            send_slack_notification("No new UserStaked events found")
+            logger.info(f"No new {EVENT_NAME} events found")
     except Exception as e:
-        send_slack_notification(f"Error processing UserStaked events: {str(e)}")
+        logger.error(f"Error processing {EVENT_NAME} events: {str(e)}")
