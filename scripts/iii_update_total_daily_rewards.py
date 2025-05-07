@@ -4,13 +4,13 @@ import time
 import datetime
 from decimal import Decimal
 from web3 import AsyncWeb3
-from psycopg2.extras import execute_values
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
+from app.models.database_models import RewardSummary
+from app.repository import RewardSummaryRepository
 from helpers.web3_helper import get_block_by_timestamp
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
@@ -18,61 +18,49 @@ RETRY_DELAY = 5  # seconds
 BATCH_SIZE = 50
 
 INPUT_TABLE_NAME = "user_multiplier"
-OUTPUT_TABLE_NAME = "reward_summary"
+TABLE_NAME = "reward_summary"
+EVENT_NAME = "RewardSummary"
 
 RPC_URL = ETH_RPC_URL
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
-def ensure_tables_exist():
-    """Create the necessary tables if they don't exist"""
-    db = get_db()
+def ensure_reward_summary_table_exists():
+    """Create the reward summary table if it doesn't exist, with columns based on event structure"""
     try:
+        db = get_db()
+        
         with db.cursor() as cursor:
-            # Create the reward summary table
+            # Get column definitions for summary table
+            summary_columns = [
+                "timestamp TIMESTAMP NOT NULL",
+                "calculation_block_current BIGINT NOT NULL",
+                "calculation_block_past BIGINT NOT NULL",
+                "category TEXT NOT NULL",
+                "value NUMERIC(30, 18) NOT NULL",
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ]
+            
+            # Create summary table if it doesn't exist
             create_summary_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {OUTPUT_TABLE_NAME} (
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
                 id SERIAL PRIMARY KEY,
-                timestamp TIMESTAMP NOT NULL,
-                calculation_block_current BIGINT NOT NULL,
-                calculation_block_past BIGINT NOT NULL,
-                category TEXT NOT NULL,
-                value NUMERIC(30, 18) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                {', '.join(summary_columns)}
             )
             """
             cursor.execute(create_summary_table_query)
-
+            
             # Create indexes
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_timestamp ON {OUTPUT_TABLE_NAME} (timestamp)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{OUTPUT_TABLE_NAME}_category ON {OUTPUT_TABLE_NAME} (category)")
-
-            logger.info(f"Ensured table {OUTPUT_TABLE_NAME} exists with required structure")
-
-            # Also create a detail table to store individual rewards if needed
-            create_detail_table_query = f"""
-            CREATE TABLE IF NOT EXISTS reward_detail (
-                id SERIAL PRIMARY KEY,
-                summary_id INTEGER REFERENCES {OUTPUT_TABLE_NAME}(id),
-                user_address TEXT NOT NULL,
-                pool_id INTEGER NOT NULL,
-                daily_reward NUMERIC(30, 18) NOT NULL,
-                total_reward NUMERIC(30, 18) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-            cursor.execute(create_detail_table_query)
-
-            # Create indexes for the detail table
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reward_detail_user ON reward_detail (user_address)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reward_detail_pool ON reward_detail (pool_id)")
-
-            logger.info("Ensured table reward_detail exists with required structure")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_timestamp ON {TABLE_NAME} (timestamp)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_category ON {TABLE_NAME} (category)")
+            
+            cursor.commit()
+            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
     except Exception as e:
-        logger.error(f"Error ensuring tables exist: {str(e)}")
+        logger.error(f"Error ensuring table exists: {str(e)}")
         raise
 
-def get_user_data():
+def get_user_reward_data():
     """Get user and pool data from the user_multiplier table"""
     try:
         db = get_db()
@@ -95,7 +83,7 @@ def get_user_data():
             logger.info(f"Retrieved {len(records)} unique user/pool combinations")
             return records
     except Exception as e:
-        logger.error(f"Error getting user data: {str(e)}")
+        logger.error(f"Error getting user reward data: {str(e)}")
         raise
 
 
@@ -150,94 +138,57 @@ async def process_rewards_batch(batch, block_24_hours_ago, block_right_now):
 
     return rewards_data
 
-def save_reward_summary(summary_data, block_24_hours_ago, latest_block):
-    """Save the reward summary data to the database"""
+def insert_reward_summary_events(summary_data, block_24_hours_ago, latest_block):
+    """Save the reward summary data to the database using the repository"""
     try:
-        db = get_db()
-        with db.cursor() as cursor:
-            # Insert summary data
-            current_time = datetime.datetime.now()
-
-            summary_values = []
-            for category, value in summary_data.items():
-                summary_values.append((
-                    current_time,
-                    latest_block,
-                    block_24_hours_ago,
-                    category,
-                    value
-                ))
-
-            summary_insert_query = f"""
-            INSERT INTO {OUTPUT_TABLE_NAME} 
-            (timestamp, calculation_block_current, calculation_block_past, category, value)
-            VALUES %s
-            RETURNING id
-            """
-
-            cursor.execute("SELECT nextval(pg_get_serial_sequence(%s, 'id'))", (OUTPUT_TABLE_NAME,))
-            summary_id = cursor.fetchone()[0]
-
-            execute_values(cursor, summary_insert_query, summary_values)
-
-            logger.info(f"Saved reward summary with {len(summary_values)} categories")
-            return summary_id
+        repository = RewardSummaryRepository()
+        current_time = datetime.datetime.now()
+        
+        reward_summary_events = []
+        for category, value in summary_data.items():
+            reward_summary = RewardSummary(
+                id=None,
+                timestamp=current_time,
+                calculation_block_current=latest_block,
+                calculation_block_past=block_24_hours_ago,
+                category=category,
+                value=value
+            )
+            reward_summary_events.append(reward_summary)
+        
+        # Insert the events and get the ID of the first one
+        repository.bulk_insert(reward_summary_events)
+        
+        # Get the ID of the most recently inserted summary
+        latest_summary = repository.get_latest_by_category(list(summary_data.keys())[0])
+        summary_id = latest_summary.id if latest_summary else None
+        
+        logger.info(f"Saved reward summary with {len(reward_summary_events)} categories")
+        return summary_id
     except Exception as e:
         logger.error(f"Error saving reward summary: {str(e)}")
         raise
 
 
-def save_reward_details(reward_details, summary_id):
-    """Save detailed reward data for each user/pool"""
+
+
+async def process_reward_events():
     try:
-        if not reward_details:
-            logger.info("No reward details to save")
-            return
-
-        db = get_db()
-        with db.cursor() as cursor:
-            values = [
-                (
-                    summary_id,
-                    detail['user_address'],
-                    detail['pool_id'],
-                    detail['daily_reward'],
-                    detail['total_reward']
-                )
-                for detail in reward_details
-            ]
-
-            detail_insert_query = """
-                                  INSERT INTO reward_detail
-                                      (summary_id, user_address, pool_id, daily_reward, total_reward)
-                                  VALUES %s \
-                                  """
-
-            execute_values(cursor, detail_insert_query, values)
-
-            logger.info(f"Saved {len(values)} reward detail records")
-    except Exception as e:
-        logger.error(f"Error saving reward details: {str(e)}")
-        raise
-
-
-async def calculate_rewards():
-    try:
-        # Ensure tables exist
-        ensure_tables_exist()
+        # Ensure table exists
+        ensure_reward_summary_table_exists()
 
         # Fetch user data from database
-        users = get_user_data()
+        users = get_user_reward_data()
 
         if not users:
-            logger.warning("No users found in the database")
+            logger.warning(f"No users found in the database for {EVENT_NAME}")
             return
 
         # Get blocks for calculation
         block_24_hours_ago, block_right_now = await get_useful_blocks()
         latest_block = await w3.eth.get_block_number() if block_right_now == 'latest' else block_right_now
 
-        logger.info(f"Calculating rewards between blocks {block_24_hours_ago} and {latest_block}")
+        logger.info(f"Processing {EVENT_NAME} between blocks {block_24_hours_ago} and {latest_block}")
 
         # Split users into batches
         batches = [users[i:i + BATCH_SIZE] for i in range(0, len(users), BATCH_SIZE)]
@@ -247,8 +198,6 @@ async def calculate_rewards():
         daily_pool_1_sum = Decimal('0')
         total_pool_0_sum = Decimal('0')
         total_pool_1_sum = Decimal('0')
-
-        all_reward_details = []
 
         for i, batch in enumerate(batches):
             logger.info(f"Processing batch {i + 1}/{len(batches)}")
@@ -262,8 +211,6 @@ async def calculate_rewards():
                 elif detail['pool_id'] == 1:
                     daily_pool_1_sum += detail['daily_reward']
                     total_pool_1_sum += detail['total_reward']
-
-                all_reward_details.append(detail)
 
             logger.info(f"Completed batch {i + 1}/{len(batches)}")
 
@@ -286,18 +233,15 @@ async def calculate_rewards():
         }
 
         # Save summary to database
-        summary_id = save_reward_summary(summary_data, block_24_hours_ago, latest_block)
+        insert_reward_summary_events(summary_data, block_24_hours_ago, latest_block)
 
-        # Save detailed data
-        save_reward_details(all_reward_details, summary_id)
-
-        logger.info(f"Successfully calculated and stored reward summaries and details")
+        logger.info(f"Successfully processed and stored {EVENT_NAME}")
 
     except Exception as e:
-        logger.error(f"Error in calculate_rewards: {str(e)}")
+        logger.error(f"Error in process_reward_events: {str(e)}")
         logger.exception("Exception details:")
         raise
 
 
 if __name__ == "__main__":
-    asyncio.run(calculate_rewards())
+    asyncio.run(process_reward_events())
