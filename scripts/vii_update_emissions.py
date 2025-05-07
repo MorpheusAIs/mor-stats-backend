@@ -16,7 +16,13 @@ from decimal import Decimal
 # Add the parent directory to the path so we can import from the app package
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.db.database import get_db
+from app.models.database_models import Emission
 from app.repository import EmissionRepository
+
+# Constants
+TABLE_NAME = "emissions"
+EVENT_NAME = "Emission"
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +33,49 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def ensure_emission_table_exists():
+    """Create the emissions table if it doesn't exist, with columns based on event structure"""
+    try:
+        db = get_db()
+        
+        with db.cursor() as cursor:
+            # Get column definitions
+            columns = [
+                "day INTEGER NOT NULL",
+                "date DATE NOT NULL",
+                "capital_emission NUMERIC(36, 18) NOT NULL",
+                "code_emission NUMERIC(36, 18) NOT NULL",
+                "compute_emission NUMERIC(36, 18) NOT NULL",
+                "community_emission NUMERIC(36, 18) NOT NULL",
+                "protection_emission NUMERIC(36, 18) NOT NULL",
+                "total_emission NUMERIC(36, 18) NOT NULL",
+                "total_supply NUMERIC(36, 18) NOT NULL",
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ]
+            
+            # Create table if it doesn't exist
+            create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                {', '.join(columns)}
+            )
+            """
+            cursor.execute(create_table_query)
+            
+            # Create indexes for efficient lookups
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_day ON {TABLE_NAME} (day)")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date ON {TABLE_NAME} (date)")
+            
+            # Create a unique index on date
+            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date_unique ON {TABLE_NAME} (date)")
+            
+            cursor.commit()
+            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+    except Exception as e:
+        logger.error(f"Error ensuring table exists: {str(e)}")
+        raise
 
 
 def parse_emission_data(file_path):
@@ -134,17 +183,19 @@ def parse_emission_data_from_string(data_string, delimiter='\t'):
         return []
 
 
-def update_emissions(emissions_data=None):
+def process_emission_events(emissions_data=None):
     """
-    Update emissions data in the database.
+    Process emission events and update emissions data in the database.
     
     Args:
-        emissions_data: List of emission data dictionaries. If None or empty, 
+        emissions_data: List of emission data dictionaries. If None or empty,
                        will attempt to fetch data from the configured source.
         
     Returns:
         Number of records inserted/updated
     """
+    # Ensure the table exists
+    ensure_emission_table_exists()
     try:
         # If no data provided, try to fetch from the configured source
         if not emissions_data:
@@ -197,7 +248,7 @@ def update_emissions(emissions_data=None):
         
         repository = EmissionRepository()
         count = repository.save_emission_data(emissions_data)
-        logger.info(f"Successfully inserted/updated {count} emission records")
+        logger.info(f"Successfully inserted/updated {count} {EVENT_NAME} records")
         return count
     except Exception as e:
         logger.error(f"Error updating emissions data: {str(e)}")
@@ -221,13 +272,13 @@ def main():
         # No specific data source provided, use the default source
         emissions_data = []
     
-    count = update_emissions(emissions_data)
+    count = process_emission_events(emissions_data)
     
     if count > 0:
-        logger.info(f"Successfully updated {count} emission records")
+        logger.info(f"Successfully processed and stored {count} {EVENT_NAME} records")
         return 0
     else:
-        logger.error("Failed to update emission records")
+        logger.error(f"Failed to process {EVENT_NAME} records")
         return 1
 
 
