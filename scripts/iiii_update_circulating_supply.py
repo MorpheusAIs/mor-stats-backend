@@ -17,40 +17,17 @@ EVENT_NAME = "CirculatingSupply"
 web3 = Web3Provider.get_instance()
 
 def ensure_circulating_supply_table_exists():
-    """Create the circulating supply table if it doesn't exist, with columns based on event structure"""
+    """Check if the table exists - table creation is now handled by the seed script"""
     try:
-        db = get_db()
-        
-        with db.cursor() as cursor:
-            # Get column definitions
-            columns = [
-                "date DATE NOT NULL",
-                "circulating_supply_at_that_date NUMERIC(36, 18) NOT NULL",
-                "block_timestamp_at_that_date BIGINT NOT NULL",
-                "total_claimed_that_day NUMERIC(36, 18) NOT NULL"
-            ]
-            
-            # Create table if it doesn't exist
-            create_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                id SERIAL PRIMARY KEY,
-                {', '.join(columns)}
-            )
-            """
-            cursor.execute(create_table_query)
-            
-            # Create indexes for efficient lookups
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date ON {TABLE_NAME} (date)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_timestamp ON {TABLE_NAME} (block_timestamp_at_that_date)")
-            
-            # Add unique constraint on date
-            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date_unique ON {TABLE_NAME} (date)")
-            
-            cursor.commit()
-            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+        repository = CirculatingSupplyRepository()
+        # Check if the table exists
+        if repository.count() >= 0:  # This will fail if the table doesn't exist
+            logger.info(f"Table {TABLE_NAME} exists")
+            return True
     except Exception as e:
-        logger.error(f"Error ensuring table exists: {str(e)}")
-        raise
+        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
+        logger.error(f"Error checking if table exists: {str(e)}")
+        raise Exception(f"Table {TABLE_NAME} does not exist")
 
 def get_latest_circulating_supply_record():
     """Get the latest circulating supply record from the database using the repository"""

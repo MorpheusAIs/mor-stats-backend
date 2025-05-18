@@ -22,40 +22,29 @@ web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
 def ensure_user_staked_events_table_exists():
-    """Create the user staked events table if it doesn't exist, with columns based on event structure"""
+    """Check if the table exists - table creation is now handled by the seed script"""
     try:
         db = get_db()
         
         with db.cursor() as cursor:
-            # Get column definitions
-            columns = [
-                "timestamp TIMESTAMP NOT NULL",
-                "transaction_hash TEXT NOT NULL",
-                "block_number BIGINT NOT NULL",
-                "pool_id INTEGER NOT NULL",
-                "user_address TEXT NOT NULL",
-                "amount BIGINT NOT NULL"
-            ]
-            
-            # Create table if it doesn't exist
-            create_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                id SERIAL PRIMARY KEY,
-                {', '.join(columns)}
-            )
+            # Just check if the table exists
+            check_query = f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name = '{TABLE_NAME}'
+            );
             """
-            cursor.execute(create_table_query)
+            cursor.execute(check_query)
+            exists = cursor.fetchone()['exists']
             
-            # Create indexes for efficient lookups
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_block_number ON {TABLE_NAME} (block_number)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_user ON {TABLE_NAME} (user_address)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_pool ON {TABLE_NAME} (pool_id)")
-            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_tx_block ON {TABLE_NAME} (transaction_hash, block_number)")
-            
-            cursor.commit()
-            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+            if not exists:
+                logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
+                raise Exception(f"Table {TABLE_NAME} does not exist")
+                
+            logger.info(f"Table {TABLE_NAME} exists")
     except Exception as e:
-        logger.error(f"Error ensuring table exists: {str(e)}")
+        logger.error(f"Error checking if table exists: {str(e)}")
         raise
 
 def insert_user_staked_events(user_staked_events: list[UserStakedEvent]):

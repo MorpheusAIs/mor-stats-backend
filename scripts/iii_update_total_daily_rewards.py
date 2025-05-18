@@ -26,19 +26,17 @@ w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
 def ensure_reward_summary_table_exists():
-    """
-    Create the reward_summary table if it doesn't exist.
-    
-    This function now uses the repository approach, which handles table creation.
-    """
+    """Check if the table exists - table creation is now handled by the seed script"""
     try:
-        # Creating an instance of the repository will ensure the table exists
-        # because the repository's methods check for and create the table if needed
         repository = RewardSummaryRepository()
-        logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+        # Check if the table exists
+        if repository.count() >= 0:  # This will fail if the table doesn't exist
+            logger.info(f"Table {TABLE_NAME} exists")
+            return True
     except Exception as e:
-        logger.error(f"Error ensuring table exists: {str(e)}")
-        raise
+        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
+        logger.error(f"Error checking if table exists: {str(e)}")
+        raise Exception(f"Table {TABLE_NAME} does not exist")
 
 def get_user_reward_data():
     """Get user and pool data from the user_multiplier table using the repository"""

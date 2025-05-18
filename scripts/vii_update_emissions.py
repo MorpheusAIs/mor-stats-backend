@@ -36,46 +36,17 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_emission_table_exists():
-    """Create the emissions table if it doesn't exist, with columns based on event structure"""
+    """Check if the table exists - table creation is now handled by the seed script"""
     try:
-        db = get_db()
-        
-        with db.cursor() as cursor:
-            # Get column definitions
-            columns = [
-                "day INTEGER NOT NULL",
-                "date DATE NOT NULL",
-                "capital_emission NUMERIC(36, 18) NOT NULL",
-                "code_emission NUMERIC(36, 18) NOT NULL",
-                "compute_emission NUMERIC(36, 18) NOT NULL",
-                "community_emission NUMERIC(36, 18) NOT NULL",
-                "protection_emission NUMERIC(36, 18) NOT NULL",
-                "total_emission NUMERIC(36, 18) NOT NULL",
-                "total_supply NUMERIC(36, 18) NOT NULL",
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-            ]
-            
-            # Create table if it doesn't exist
-            create_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                id SERIAL PRIMARY KEY,
-                {', '.join(columns)}
-            )
-            """
-            cursor.execute(create_table_query)
-            
-            # Create indexes for efficient lookups
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_day ON {TABLE_NAME} (day)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date ON {TABLE_NAME} (date)")
-            
-            # Create a unique index on date
-            cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{TABLE_NAME}_date_unique ON {TABLE_NAME} (date)")
-            
-            cursor.commit()
-            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+        repository = EmissionRepository()
+        # Check if the table exists
+        if repository.count() >= 0:  # This will fail if the table doesn't exist
+            logger.info(f"Table {TABLE_NAME} exists")
+            return True
     except Exception as e:
-        logger.error(f"Error ensuring table exists: {str(e)}")
-        raise
+        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
+        logger.error(f"Error checking if table exists: {str(e)}")
+        raise Exception(f"Table {TABLE_NAME} does not exist")
 
 
 def parse_emission_data(file_path):
