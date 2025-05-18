@@ -64,7 +64,8 @@ def get_user_multiplier_dataframe():
             'pool_id': 'poolId',
             'user_address': 'user',
             'multiplier': 'multiplier',
-            'error_message': 'errorMessage'
+            'claim_lock_start': 'claimLockStart',
+            'claim_lock_end': 'claimLockEnd'
         })
         
         # Add missing columns that might be expected

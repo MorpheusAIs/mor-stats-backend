@@ -39,10 +39,10 @@ def ensure_user_multiplier_table_exists():
                 "transaction_hash TEXT NOT NULL",
                 "block_number BIGINT NOT NULL",
                 "pool_id INTEGER NOT NULL",
-                "user varchar(42) NOT NULL",
+                "user_address varchar(42) NOT NULL",
                 "claim_lock_start BIGINT NOT NULL",
-                "claim_lock_end BIGINT NOT NULL"
-                "multiplier NUMERIC(78, 0)",
+                "claim_lock_end BIGINT NOT NULL",
+                "multiplier NUMERIC(78, 0)"
             ]
             
             # Create table if it doesn't exist

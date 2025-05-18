@@ -8,7 +8,7 @@ from web3 import AsyncWeb3
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
 from app.models.database_models import RewardSummary
-from app.repository import RewardSummaryRepository
+from app.repository import RewardSummaryRepository, UserMultiplierRepository
 from helpers.web3_helper import get_block_by_timestamp
 
 logger = logging.getLogger(__name__)
@@ -26,62 +26,46 @@ w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
 def ensure_reward_summary_table_exists():
-    """Create the reward summary table if it doesn't exist, with columns based on event structure"""
+    """
+    Create the reward_summary table if it doesn't exist.
+    
+    This function now uses the repository approach, which handles table creation.
+    """
     try:
-        db = get_db()
-        
-        with db.cursor() as cursor:
-            # Get column definitions for summary table
-            summary_columns = [
-                "timestamp TIMESTAMP NOT NULL",
-                "calculation_block_current BIGINT NOT NULL",
-                "calculation_block_past BIGINT NOT NULL",
-                "category TEXT NOT NULL",
-                "value NUMERIC(30, 18) NOT NULL",
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-            ]
-            
-            # Create summary table if it doesn't exist
-            create_summary_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                id SERIAL PRIMARY KEY,
-                {', '.join(summary_columns)}
-            )
-            """
-            cursor.execute(create_summary_table_query)
-            
-            # Create indexes
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_timestamp ON {TABLE_NAME} (timestamp)")
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_category ON {TABLE_NAME} (category)")
-            
-            cursor.commit()
-            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
+        # Creating an instance of the repository will ensure the table exists
+        # because the repository's methods check for and create the table if needed
+        repository = RewardSummaryRepository()
+        logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
     except Exception as e:
         logger.error(f"Error ensuring table exists: {str(e)}")
         raise
 
 def get_user_reward_data():
-    """Get user and pool data from the user_multiplier table"""
+    """Get user and pool data from the user_multiplier table using the repository"""
     try:
-        db = get_db()
-        with db.cursor() as cursor:
-            query = f"""
-            SELECT user_address, pool_id
-            FROM {INPUT_TABLE_NAME}
-            WHERE multiplier IS NOT NULL
-            GROUP BY user_address, pool_id
-            """
-            cursor.execute(query)
-
-            records = []
-            for row in cursor.fetchall():
-                records.append({
-                    'user': row[0],
-                    'poolId': row[1]
-                })
-
-            logger.info(f"Retrieved {len(records)} unique user/pool combinations")
-            return records
+        # Use the repository to get the data
+        repository = UserMultiplierRepository()
+        
+        # Get all records with multiplier not null
+        query = f"""
+        SELECT user_address, pool_id
+        FROM {INPUT_TABLE_NAME}
+        WHERE multiplier IS NOT NULL
+        GROUP BY user_address, pool_id
+        """
+        
+        # Execute the query using the repository's db connection
+        results = repository.db.fetchall(query)
+        
+        records = []
+        for row in results:
+            records.append({
+                'user': row['user_address'],
+                'poolId': row['pool_id']
+            })
+        
+        logger.info(f"Retrieved {len(records)} unique user/pool combinations")
+        return records
     except Exception as e:
         logger.error(f"Error getting user reward data: {str(e)}")
         raise
