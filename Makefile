@@ -20,3 +20,5 @@ db-up:
 down:
 	$(DOCKER_CMD) compose -f ./docker/docker-compose.yml down
 
+seed:
+	python scripts/seed_database.py

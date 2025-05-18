@@ -1,0 +1,426 @@
+"""
+Consolidated database seeding script.
+
+This script handles seeding all tables from CSV files in the data directory.
+It provides a unified approach to database initialization.
+"""
+import csv
+import logging
+import os
+import sys
+from datetime import datetime
+from decimal import Decimal
+from typing import Dict, List, Type, Callable, Any
+
+from app.db.database import get_db
+from app.models.database_models import (
+    CirculatingSupply,
+    Emission,
+    UserClaimLocked,
+    UserMultiplier,
+    RewardSummary,
+    UserStakedEvent,
+    UserWithdrawnEvent,
+    OverplusBridgedEvent
+)
+from app.repository.circulating_supply_repository import CirculatingSupplyRepository
+from app.repository.emission_repository import EmissionRepository
+from app.repository.user_claim_locked_repository import UserClaimLockedRepository
+from app.repository.user_multiplier_repository import UserMultiplierRepository
+from app.repository.reward_repository import RewardRepository
+from app.repository.user_staked_events_repository import UserStakedEventsRepository
+from app.repository.user_withdrawn_events_repository import UserWithdrawnEventsRepository
+from app.repository.overplus_bridged_events_repository import OverplusBridgedEventsRepository
+from app.repository.overplus_bridged_events_repository import OverplusBridgedEventsRepository
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Base directory for data files
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+
+# Define table creation SQL statements
+TABLE_DEFINITIONS = {
+    "circulating_supply": """
+        CREATE TABLE IF NOT EXISTS circulating_supply (
+            id SERIAL PRIMARY KEY,
+            date DATE NOT NULL,
+            circulating_supply_at_that_date NUMERIC(36, 18) NOT NULL,
+            block_timestamp_at_that_date BIGINT NOT NULL,
+            total_claimed_that_day NUMERIC(36, 18) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_circulating_supply_date ON circulating_supply (date);
+        CREATE INDEX IF NOT EXISTS idx_circulating_supply_timestamp ON circulating_supply (block_timestamp_at_that_date);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_circulating_supply_date_unique ON circulating_supply (date);
+    """,
+    "emissions": """
+        CREATE TABLE IF NOT EXISTS emissions (
+            id SERIAL PRIMARY KEY,
+            day INTEGER NOT NULL,
+            date DATE NOT NULL,
+            capital_emission NUMERIC(36, 18) NOT NULL,
+            code_emission NUMERIC(36, 18) NOT NULL,
+            compute_emission NUMERIC(36, 18) NOT NULL,
+            community_emission NUMERIC(36, 18) NOT NULL,
+            protection_emission NUMERIC(36, 18) NOT NULL,
+            total_emission NUMERIC(36, 18) NOT NULL,
+            total_supply NUMERIC(36, 18) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_emissions_date ON emissions (date);
+        CREATE INDEX IF NOT EXISTS idx_emissions_day ON emissions (day);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_emissions_date_unique ON emissions (date);
+    """,
+    "user_claim_locked": """
+        CREATE TABLE IF NOT EXISTS user_claim_locked (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            block_number BIGINT NOT NULL,
+            pool_id INTEGER NOT NULL,
+            user TEXT NOT NULL,
+            claim_lock_start TEXT NOT NULL,
+            claim_lock_end TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_claim_locked_block_number ON user_claim_locked (block_number);
+        CREATE INDEX IF NOT EXISTS idx_user_claim_locked_user ON user_claim_locked (user);
+        CREATE INDEX IF NOT EXISTS idx_user_claim_locked_pool_id ON user_claim_locked (pool_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_claim_locked_tx_block ON user_claim_locked (transaction_hash, block_number);
+    """,
+    "user_multiplier": """
+        CREATE TABLE IF NOT EXISTS user_multiplier (
+            id SERIAL PRIMARY KEY,
+            user_claim_locked_id INTEGER NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            block_number BIGINT NOT NULL,
+            pool_id INTEGER NOT NULL,
+            user_address TEXT NOT NULL,
+            multiplier NUMERIC(36, 18),
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_claim_locked_id) REFERENCES user_claim_locked (id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_multiplier_user ON user_multiplier (user_address);
+        CREATE INDEX IF NOT EXISTS idx_user_multiplier_pool_id ON user_multiplier (pool_id);
+    """,
+    "reward_summary": """
+        CREATE TABLE IF NOT EXISTS reward_summary (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            calculation_block_current BIGINT NOT NULL,
+            calculation_block_past BIGINT NOT NULL,
+            category TEXT NOT NULL,
+            value NUMERIC(36, 18) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_reward_summary_timestamp ON reward_summary (timestamp);
+        CREATE INDEX IF NOT EXISTS idx_reward_summary_category ON reward_summary (category);
+    """,
+    "user_staked_events": """
+        CREATE TABLE IF NOT EXISTS user_staked_events (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            block_number BIGINT NOT NULL,
+            pool_id INTEGER NOT NULL,
+            user_address TEXT NOT NULL,
+            amount BIGINT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_staked_events_block_number ON user_staked_events (block_number);
+        CREATE INDEX IF NOT EXISTS idx_user_staked_events_user ON user_staked_events (user_address);
+        CREATE INDEX IF NOT EXISTS idx_user_staked_events_pool ON user_staked_events (pool_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_staked_events_tx_block ON user_staked_events (transaction_hash, block_number);
+    """,
+    "user_withdrawn_events": """
+        CREATE TABLE IF NOT EXISTS user_withdrawn_events (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            block_number BIGINT NOT NULL,
+            pool_id INTEGER NOT NULL,
+            user_address TEXT NOT NULL,
+            amount NUMERIC(36, 18) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_block_number ON user_withdrawn_events (block_number);
+        CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_user ON user_withdrawn_events (user_address);
+        CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_pool ON user_withdrawn_events (pool_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_withdrawn_events_tx_block ON user_withdrawn_events (transaction_hash, block_number);
+    """,
+    "overplus_bridged_events": """
+        CREATE TABLE IF NOT EXISTS overplus_bridged_events (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            transaction_hash TEXT NOT NULL,
+            block_number BIGINT NOT NULL,
+            amount NUMERIC(36, 18) NOT NULL,
+            unique_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_overplus_bridged_events_block_number ON overplus_bridged_events (block_number);
+        CREATE INDEX IF NOT EXISTS idx_overplus_bridged_events_unique_id ON overplus_bridged_events (unique_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_overplus_bridged_events_tx_block ON overplus_bridged_events (transaction_hash, block_number);
+    """
+}
+
+# Define CSV file parsers for each data type
+def parse_circulating_supply(row: Dict[str, str]) -> CirculatingSupply:
+    """Parse a CSV row into a CirculatingSupply object."""
+    date_obj = datetime.strptime(row["date"], "%d/%m/%Y").date()
+    return CirculatingSupply(
+        date=date_obj,
+        circulating_supply_at_that_date=Decimal(str(row["circulating_supply_at_that_date"])),
+        block_timestamp_at_that_date=int(row["block_timestamp_at_that_date"]),
+        total_claimed_that_day=Decimal(str(row["total_claimed_that_day"]))
+    )
+
+def parse_emission(row: Dict[str, str]) -> Emission:
+    """Parse a CSV row into an Emission object."""
+    date_obj = datetime.strptime(row["Date"], "%Y-%m-%d").date()
+    return Emission(
+        day=int(row["Day"]),
+        date=date_obj,
+        capital_emission=Decimal(row["Capital Emission"]),
+        code_emission=Decimal(row["Code Emission"]),
+        compute_emission=Decimal(row["Compute Emission"]),
+        community_emission=Decimal(row["Community Emission"]),
+        protection_emission=Decimal(row["Protection Emission"]),
+        total_emission=Decimal(row["Total Emission"]),
+        total_supply=Decimal(row["Total Supply"])
+    )
+
+def parse_user_claim_locked(row: Dict[str, str]) -> UserClaimLocked:
+    """Parse a CSV row into a UserClaimLocked object."""
+    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    return UserClaimLocked(
+        timestamp=timestamp,
+        transaction_hash=row["transaction_hash"],
+        block_number=int(row["block_number"]),
+        pool_id=int(row["pool_id"]),
+        user=row["user"],
+        claim_lock_start=row["claim_lock_start"],
+        claim_lock_end=row["claim_lock_end"]
+    )
+
+def parse_user_multiplier(row: Dict[str, str]) -> UserMultiplier:
+    """Parse a CSV row into a UserMultiplier object."""
+    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    return UserMultiplier(
+        user_claim_locked_id=int(row["user_claim_locked_id"]),
+        timestamp=timestamp,
+        transaction_hash=row["transaction_hash"],
+        block_number=int(row["block_number"]),
+        pool_id=int(row["pool_id"]),
+        user_address=row["user_address"],
+        multiplier=Decimal(row["multiplier"]) if row.get("multiplier") else None,
+        error_message=row.get("error_message")
+    )
+
+def parse_reward_summary(row: Dict[str, str]) -> RewardSummary:
+    """Parse a CSV row into a RewardSummary object."""
+    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    return RewardSummary(
+        timestamp=timestamp,
+        calculation_block_current=int(row["calculation_block_current"]),
+        calculation_block_past=int(row["calculation_block_past"]),
+        category=row["category"],
+        value=Decimal(row["value"])
+    )
+
+def parse_user_staked_event(row: Dict[str, str]) -> UserStakedEvent:
+    """Parse a CSV row into a UserStakedEvent object."""
+    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    return UserStakedEvent(
+        timestamp=timestamp,
+        transaction_hash=row["transaction_hash"],
+        block_number=int(row["block_number"]),
+        pool_id=int(row["pool_id"]),
+        user_address=row["user_address"],
+        amount=int(row["amount"])
+    )
+
+def parse_user_withdrawn_event(row: Dict[str, str]) -> UserWithdrawnEvent:
+    """Parse a CSV row into a UserWithdrawnEvent object."""
+    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    return UserWithdrawnEvent(
+        timestamp=timestamp,
+        transaction_hash=row["transaction_hash"],
+        block_number=int(row["block_number"]),
+        pool_id=int(row["pool_id"]),
+        user_address=row["user_address"],
+        amount=Decimal(row["amount"])
+    )
+
+def parse_overplus_bridged_event(row: Dict[str, str]) -> OverplusBridgedEvent:
+    """Parse a CSV row into an OverplusBridgedEvent object."""
+    timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S")
+    return OverplusBridgedEvent(
+        timestamp=timestamp,
+        transaction_hash=row["TransactionHash"],
+        block_number=int(row["BlockNumber"]),
+        amount=Decimal(row["amount"]),
+        unique_id=row["uniqueId"]
+    )
+
+# Define mapping between CSV files, models, repositories, and parsers
+DATA_MAPPING = [
+    {
+        "csv_file": "MASTER MOR EXPLORER - CircSupply.csv",
+        "table_name": "circulating_supply",
+        "repository_class": CirculatingSupplyRepository,
+        "parser": parse_circulating_supply
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - Emissions.csv",
+        "table_name": "emissions",
+        "repository_class": EmissionRepository,
+        "parser": parse_emission
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - UserClaimLocked.csv",
+        "table_name": "user_claim_locked",
+        "repository_class": UserClaimLockedRepository,
+        "parser": parse_user_claim_locked
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - UserMultiplier.csv",
+        "table_name": "user_multiplier",
+        "repository_class": UserMultiplierRepository,
+        "parser": parse_user_multiplier
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - RewardSum.csv",
+        "table_name": "reward_summary",
+        "repository_class": RewardRepository,
+        "parser": parse_reward_summary
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - UserStaked.csv",
+        "table_name": "user_staked_events",
+        "repository_class": UserStakedEventsRepository,
+        "parser": parse_user_staked_event
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - UserWithdrawn.csv",
+        "table_name": "user_withdrawn_events",
+        "repository_class": UserWithdrawnEventsRepository,
+        "parser": parse_user_withdrawn_event
+    },
+    {
+        "csv_file": "MASTER MOR EXPLORER - OverplusBridged.csv",
+        "table_name": "overplus_bridged_events",
+        "repository_class": OverplusBridgedEventsRepository,
+        "parser": parse_overplus_bridged_event
+    }
+]
+
+def ensure_tables_exist():
+    """Create all tables if they don't exist."""
+    db = get_db()
+    try:
+        with db.cursor() as cursor:
+            for table_name, create_sql in TABLE_DEFINITIONS.items():
+                cursor.execute(create_sql)
+                logger.info(f"Ensured table {table_name} exists with required structure")
+    except Exception as e:
+        logger.error(f"Error ensuring tables exist: {str(e)}")
+        raise
+
+def import_data_from_csv(csv_file: str, parser: Callable, repository_class: Type) -> int:
+    """
+    Import data from a CSV file into the database.
+    
+    Args:
+        csv_file: Path to the CSV file
+        parser: Function to parse CSV rows into model objects
+        repository_class: Repository class to use for database operations
+        
+    Returns:
+        Number of records imported
+    """
+    try:
+        csv_path = os.path.join(DATA_DIR, csv_file)
+        if not os.path.exists(csv_path):
+            logger.error(f"CSV file not found: {csv_path}")
+            return 0
+        
+        logger.info(f"Importing data from CSV file: {csv_path}")
+        
+        # Read data from CSV file
+        records = []
+        with open(csv_path, 'r') as file:
+            csv_reader = csv.DictReader(file)
+            for row in csv_reader:
+                try:
+                    record = parser(row)
+                    records.append(record)
+                except Exception as e:
+                    logger.warning(f"Error processing row: {row}. Error: {str(e)}")
+                    continue
+        
+        if not records:
+            logger.warning(f"No valid records found in {csv_file}")
+            return 0
+        
+        # Insert records into database
+        repository = repository_class()
+        count = repository.bulk_insert(records)
+        logger.info(f"Imported {count} records from {csv_file}")
+        return count
+    
+    except Exception as e:
+        logger.error(f"Error importing data from {csv_file}: {str(e)}")
+        raise
+
+def seed_database():
+    """Seed the database with data from all CSV files."""
+    try:
+        # Ensure all tables exist
+        ensure_tables_exist()
+        
+        # Import data from each CSV file
+        total_count = 0
+        for mapping in DATA_MAPPING:
+            try:
+                count = import_data_from_csv(
+                    mapping["csv_file"],
+                    mapping["parser"],
+                    mapping["repository_class"]
+                )
+                total_count += count
+                logger.info(f"Successfully imported {count} records into {mapping['table_name']} table")
+            except Exception as e:
+                logger.error(f"Error importing data for {mapping['table_name']}: {str(e)}")
+                continue
+        
+        return total_count
+    
+    except Exception as e:
+        logger.error(f"Error seeding database: {str(e)}")
+        raise
+
+def main():
+    """Main function to seed the database."""
+    try:
+        count = seed_database()
+        if count > 0:
+            logger.info(f"Successfully imported {count} total records into the database")
+        else:
+            logger.warning("No records were imported. Check the CSV files and logs for errors.")
+        return 0
+    except Exception as e:
+        logger.error(f"Error seeding database: {str(e)}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
