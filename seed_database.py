@@ -84,16 +84,16 @@ TABLE_DEFINITIONS = {
         CREATE TABLE IF NOT EXISTS user_claim_locked (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
-            transaction_hash TEXT NOT NULL,
+            transaction_hash varchar(255) NOT NULL,
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
-            user TEXT NOT NULL,
+            user_address varchar(255) NOT NULL,
             claim_lock_start TEXT NOT NULL,
             claim_lock_end TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_user_claim_locked_block_number ON user_claim_locked (block_number);
-        CREATE INDEX IF NOT EXISTS idx_user_claim_locked_user ON user_claim_locked (user);
+        CREATE INDEX IF NOT EXISTS idx_user_claim_locked_user ON user_claim_locked (user_address);
         CREATE INDEX IF NOT EXISTS idx_user_claim_locked_pool_id ON user_claim_locked (pool_id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_user_claim_locked_tx_block ON user_claim_locked (transaction_hash, block_number);
     """,
@@ -105,9 +105,8 @@ TABLE_DEFINITIONS = {
             transaction_hash TEXT NOT NULL,
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
-            user_address TEXT NOT NULL,
+            user_address varchar(255) NOT NULL,
             multiplier NUMERIC(36, 18),
-            error_message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_claim_locked_id) REFERENCES user_claim_locked (id)
         );
@@ -120,7 +119,7 @@ TABLE_DEFINITIONS = {
             timestamp TIMESTAMP NOT NULL,
             calculation_block_current BIGINT NOT NULL,
             calculation_block_past BIGINT NOT NULL,
-            category TEXT NOT NULL,
+            category varchar(255) NOT NULL,
             value NUMERIC(36, 18) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -131,10 +130,10 @@ TABLE_DEFINITIONS = {
         CREATE TABLE IF NOT EXISTS user_staked_events (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
-            transaction_hash TEXT NOT NULL,
+            transaction_hash varchar(255) NOT NULL,
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
-            user_address TEXT NOT NULL,
+            user_address varchar(255) NOT NULL,
             amount BIGINT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_block_number ON user_staked_events (block_number);
@@ -146,10 +145,10 @@ TABLE_DEFINITIONS = {
         CREATE TABLE IF NOT EXISTS user_withdrawn_events (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
-            transaction_hash TEXT NOT NULL,
+            transaction_hash varchar(255) NOT NULL,
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
-            user_address TEXT NOT NULL,
+            user_address varchar(255) NOT NULL,
             amount NUMERIC(36, 18) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -162,10 +161,10 @@ TABLE_DEFINITIONS = {
         CREATE TABLE IF NOT EXISTS overplus_bridged_events (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
-            transaction_hash TEXT NOT NULL,
+            transaction_hash varchar(255) NOT NULL,
             block_number BIGINT NOT NULL,
             amount NUMERIC(36, 18) NOT NULL,
-            unique_id TEXT NOT NULL,
+            unique_id varchar(255) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_overplus_bridged_events_block_number ON overplus_bridged_events (block_number);

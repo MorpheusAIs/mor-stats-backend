@@ -15,7 +15,7 @@ class UserClaimLocked(BaseModel):
     transaction_hash: str = Field(..., description="Transaction hash")
     block_number: int = Field(..., description="Block number")
     pool_id: int = Field(..., description="Pool ID")
-    user: str = Field(..., description="User address")
+    user_address: str = Field(..., description="User address")
     claim_lock_start: datetime = Field(..., description="ClaimLockStart")
     claim_lock_end: datetime = Field(..., description="ClaimLockEnd")
 
