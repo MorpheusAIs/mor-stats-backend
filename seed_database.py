@@ -45,7 +45,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Base directory for data files
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+DATA_DIR = './data'
 
 # Define table creation SQL statements
 TABLE_DEFINITIONS = {
