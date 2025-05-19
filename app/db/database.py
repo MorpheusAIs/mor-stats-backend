@@ -9,7 +9,6 @@ from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, TypeVar, Tuple
 
 import psycopg2
-from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 
 from app.core.exceptions import DatabaseError

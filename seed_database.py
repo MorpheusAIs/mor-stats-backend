@@ -10,9 +10,11 @@ import os
 import sys
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Type, Callable, Any
+from typing import Dict, Type, Callable
 
-from app.db.database import get_db
+from app.core.settings import settings
+from app.core.exceptions import DatabaseError
+from app.db.database import DBConfig, init_db
 from app.models.database_models import (
     CirculatingSupply,
     Emission,
@@ -27,10 +29,9 @@ from app.repository.circulating_supply_repository import CirculatingSupplyReposi
 from app.repository.emission_repository import EmissionRepository
 from app.repository.user_claim_locked_repository import UserClaimLockedRepository
 from app.repository.user_multiplier_repository import UserMultiplierRepository
-from app.repository.reward_repository import RewardRepository
+from app.repository.reward_repository import RewardSummaryRepository
 from app.repository.user_staked_events_repository import UserStakedEventsRepository
 from app.repository.user_withdrawn_events_repository import UserWithdrawnEventsRepository
-from app.repository.overplus_bridged_events_repository import OverplusBridgedEventsRepository
 from app.repository.overplus_bridged_events_repository import OverplusBridgedEventsRepository
 
 # Configure logging
@@ -301,7 +302,7 @@ DATA_MAPPING = [
     {
         "csv_file": "MASTER MOR EXPLORER - RewardSum.csv",
         "table_name": "reward_summary",
-        "repository_class": RewardRepository,
+        "repository_class": RewardSummaryRepository,
         "parser": parse_reward_summary
     },
     {
@@ -326,7 +327,24 @@ DATA_MAPPING = [
 
 def ensure_tables_exist():
     """Create all tables if they don't exist."""
-    db = get_db()
+    config = DBConfig(
+        host=settings.database.host,
+        port=settings.database.port,
+        database=settings.database.database,
+        user=settings.database.user,
+        password=settings.database.password,
+        minconn=settings.database.minconn,
+        maxconn=settings.database.maxconn,
+        autocommit=settings.database.autocommit,
+    )
+
+    db = init_db(config)
+    try:
+        if not db.health_check():
+            raise DatabaseError("Database health check failed")
+        logger.info("Database connection check successful")
+    except Exception as e:
+        raise DatabaseError("Database connection error", details={"error": str(e)})
     try:
         with db.cursor() as cursor:
             for table_name, create_sql in TABLE_DEFINITIONS.items():
