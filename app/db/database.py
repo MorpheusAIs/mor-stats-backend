@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, TypeVar, Tuple
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -187,8 +187,7 @@ class Database:
         """
         conn = self._acquire()
         try:
-            cursor_factory = RealDictCursor if dict_cursor else None
-            with conn.cursor(cursor_factory=cursor_factory) as cur:
+            with conn.cursor() as cur:
                 yield cur
                 if not conn.autocommit:
                     conn.commit()
@@ -214,7 +213,7 @@ class Database:
     @with_retry()
     def fetchone(
         self, sql: str, params: Optional[Sequence[Any]] = None
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Tuple[Any]]:
         """
         Fetch a single row from the database.
         
@@ -232,7 +231,7 @@ class Database:
     @with_retry()
     def fetchall(
         self, sql: str, params: Optional[Sequence[Any]] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Tuple[Any]]:
         """
         Fetch all rows from the database.
         
@@ -280,7 +279,8 @@ class Database:
         """
         try:
             result = self.fetchone("SELECT 1")
-            return result is not None and result.get('1') == 1
+            logger.info(f'db health result: {str(result)}')
+            return result is not None and result[0] == 1
         except Exception as e:
             logger.error(f"Database health check failed: {str(e)}")
             return False
