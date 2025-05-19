@@ -86,12 +86,6 @@ def get_block_number_by_timestamp(timestamp):
     return left  # Return the closest block number
 
 
-def send_slack_notification(message):
-    """Placeholder for slack notification function"""
-    # This would be implemented elsewhere or imported
-    logger.info(f"NOTIFICATION: {message}")
-
-
 def process_circulating_supply_events():
     try:
         # Ensure the table exists
@@ -101,7 +95,6 @@ def process_circulating_supply_events():
         latest_record = get_latest_circulating_supply_record()
         if not latest_record:
             logger.error(f"Cannot update: No baseline record found in the database for {EVENT_NAME}")
-            send_slack_notification(f"Error: Cannot process {EVENT_NAME} - no baseline record found")
             return None
 
         # Extract latest values

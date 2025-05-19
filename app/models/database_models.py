@@ -16,8 +16,8 @@ class UserClaimLocked(BaseModel):
     block_number: int = Field(..., description="Block number")
     pool_id: int = Field(..., description="Pool ID")
     user: str = Field(..., description="User address")
-    claim_lock_start: str = Field(..., description="ClaimLockStart")
-    claim_lock_end: str = Field(..., description="ClaimLockEnd")
+    claim_lock_start: datetime = Field(..., description="ClaimLockStart")
+    claim_lock_end: datetime = Field(..., description="ClaimLockEnd")
 
 class UserMultiplier(BaseModel):
     """Model for user_multiplier table."""
@@ -29,8 +29,6 @@ class UserMultiplier(BaseModel):
     pool_id: int = Field(..., description="Pool ID")
     user_address: str = Field(..., description="User address")
     multiplier: Optional[Decimal] = Field(None, description="User multiplier")
-    error_message: Optional[str] = Field(None, description="Error message if any")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
 
 
 class RewardSummary(BaseModel):
@@ -41,7 +39,6 @@ class RewardSummary(BaseModel):
     calculation_block_past: int = Field(..., description="Past block used for calculation")
     category: str = Field(..., description="Reward category")
     value: Decimal = Field(..., description="Reward value")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
 
 
 class RewardDetail(BaseModel):
@@ -52,17 +49,15 @@ class RewardDetail(BaseModel):
     pool_id: int = Field(..., description="Pool ID")
     daily_reward: Decimal = Field(..., description="Daily reward")
     total_reward: Decimal = Field(..., description="Total reward")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
 
 
 class CirculatingSupply(BaseModel):
     """Model for circulating_supply table."""
     id: Optional[int] = Field(None, description="Primary key")
-    date: date = Field(..., description="Date")
+    date: datetime = Field(..., description="Date")
     circulating_supply_at_that_date: Decimal = Field(..., description="Circulating supply at that date")
     block_timestamp_at_that_date: int = Field(..., description="Block timestamp at that date")
     total_claimed_that_day: Decimal = Field(..., description="Total claimed that day")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
 
 
 class UserStakedEvent(BaseModel):
@@ -85,7 +80,6 @@ class UserWithdrawnEvent(BaseModel):
     pool_id: int = Field(..., description="Pool ID")
     user_address: str = Field(..., description="User address")
     amount: Decimal = Field(..., description="Amount withdrawn")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
 
 
 class OverplusBridgedEvent(BaseModel):
@@ -96,14 +90,13 @@ class OverplusBridgedEvent(BaseModel):
     block_number: int = Field(..., description="Block number")
     amount: Decimal = Field(..., description="Amount bridged")
     unique_id: str = Field(..., description="Unique ID")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
 
 
 class Emission(BaseModel):
     """Model for emissions table."""
     id: Optional[int] = Field(None, description="Primary key")
     day: int = Field(..., description="Day number")
-    date: date = Field(..., description="Date of emission")
+    date: datetime = Field(..., description="Date of emission")
     capital_emission: Decimal = Field(..., description="Capital emission amount")
     code_emission: Decimal = Field(..., description="Code emission amount")
     compute_emission: Decimal = Field(..., description="Compute emission amount")
@@ -111,4 +104,3 @@ class Emission(BaseModel):
     protection_emission: Decimal = Field(..., description="Protection emission amount")
     total_emission: Decimal = Field(..., description="Total emission amount")
     total_supply: Decimal = Field(..., description="Total supply at this date")
-    created_at: Optional[datetime] = Field(None, description="Record creation timestamp")

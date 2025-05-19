@@ -7,7 +7,6 @@ from app.models.database_models import UserStakedEvent
 from app.repository import UserStakedEventsRepository
 from app.web3.web3_wrapper import Web3Provider
 from helpers.database_helpers.db_helper import get_last_block_from_db
-from helpers.slack import send_slack_notification
 from helpers.web3_helper import get_events_in_batches
 
 logger = logging.getLogger(__name__)

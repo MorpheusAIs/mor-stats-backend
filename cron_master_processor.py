@@ -7,13 +7,13 @@ import time
 from app.db.database import get_db, init_db, DBConfig
 from app.core.settings import settings
 from scripts.i_update_user_claim_locked_events import process_user_claim_locked_events
-from scripts.ii_update_user_multipliers import calculate_user_multipliers
-from scripts.iii_update_total_daily_rewards import calculate_rewards
-from scripts.iiii_update_circulating_supply import update_circulating_supply
+from scripts.ii_update_user_multipliers import process_user_multiplier_events
+from scripts.iii_update_total_daily_rewards import process_reward_events
+from scripts.iiii_update_circulating_supply import process_circulating_supply_events
 from scripts.iv_update_user_staked_events import process_user_staked_events
 from scripts.v_update_user_withdrawn_events import process_user_withdrawn_events
 from scripts.vi_update_overplus_bridged_events import process_overplus_bridged_events
-from scripts.vii_update_emissions import update_emissions
+# from scripts.vii_update_emissions import update_emissions
 
 # Configure logging
 logging.basicConfig(
@@ -72,19 +72,19 @@ async def run_update_process():
 
         # Step 2: Update User Multipliers
         logger.info("Step 2: Updating User Multipliers")
-        await calculate_user_multipliers()
+        await process_user_multiplier_events()
         logger.info("Step 2 completed successfully")
         time.sleep(5)
 
         # Step 3: Update Total and Daily Rewards
         logger.info("Step 3: Updating Total and Daily Rewards")
-        await calculate_rewards()
+        await process_reward_events()
         logger.info("Step 3 completed successfully")
         time.sleep(5)
 
         # Step 4: Update Circulating Supply
         logger.info("Step 4: Updating Circulating Supply")
-        update_circulating_supply()
+        process_circulating_supply_events()
         logger.info("Step 4 completed successfully")
         time.sleep(5)
 
@@ -107,10 +107,10 @@ async def run_update_process():
         time.sleep(5)
 
         # Step 8: Update Emissions Data
-        logger.info("Step 8: Updating Emissions Data")
-        update_emissions()
-        logger.info("Step 8 completed successfully")
-        time.sleep(5)
+        # logger.info("Step 8: Updating Emissions Data")
+        # update_emissions()
+        # logger.info("Step 8 completed successfully")
+        # time.sleep(5)
 
         end_time = datetime.now()
         duration = end_time - start_time

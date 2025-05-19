@@ -20,5 +20,12 @@ db-up:
 down:
 	$(DOCKER_CMD) compose -f ./docker/docker-compose.yml down
 
-seed:
+# Seed the local database
+seed-local:
 	python scripts/seed_database.py
+
+# Seed the Docker database
+seed-docker:
+	$(DOCKER_CMD) compose -f ./docker/docker-compose.yml exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -c "SELECT 1" > /dev/null 2>&1 || (echo "PostgreSQL is not running. Starting it..." && $(DOCKER_CMD) compose -f ./docker/docker-compose.yml start postgres && sleep 5)
+	$(DOCKER_CMD) compose -f ./docker/docker-compose.yml exec -T mor-stats python scripts/migrations/seed_database.py
+

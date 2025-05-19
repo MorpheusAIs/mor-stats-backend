@@ -9,7 +9,6 @@ from app.db.database import get_db
 from app.models.database_models import UserMultiplier
 from app.repository import UserMultiplierRepository
 from app.web3.web3_wrapper import get_block_number
-from helpers.database_helpers.db_helper import get_last_block_from_db
 
 logger = logging.getLogger(__name__)
 
