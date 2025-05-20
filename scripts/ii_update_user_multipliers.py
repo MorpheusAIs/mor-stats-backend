@@ -163,7 +163,7 @@ async def process_user_multiplier_events():
                     
                     user_multiplier = UserMultiplier(
                         id=None,
-                        user_claim_locked_id=record['id'],
+                        user_claim_locked_start=record['id'],
                         timestamp=record['timestamp'],
                         transaction_hash=record['transaction_hash'],
                         block_number=record['block_number'],

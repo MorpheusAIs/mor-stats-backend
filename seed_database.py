@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Dict, Type, Callable
 
 from app.core.settings import settings
@@ -88,8 +88,8 @@ TABLE_DEFINITIONS = {
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
             user_address varchar(255) NOT NULL,
-            claim_lock_start TEXT NOT NULL,
-            claim_lock_end TEXT NOT NULL,
+            claim_lock_start bigint NOT NULL,
+            claim_lock_end bigint NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_user_claim_locked_block_number ON user_claim_locked (block_number);
@@ -134,7 +134,7 @@ TABLE_DEFINITIONS = {
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
             user_address varchar(255) NOT NULL,
-            amount BIGINT NOT NULL
+            amount NUMERIC(36, 18) NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_block_number ON user_staked_events (block_number);
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_user ON user_staked_events (user_address);
@@ -201,29 +201,29 @@ def parse_emission(row: Dict[str, str]) -> Emission:
 
 def parse_user_claim_locked(row: Dict[str, str]) -> UserClaimLocked:
     """Parse a CSV row into a UserClaimLocked object."""
-    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S")
     return UserClaimLocked(
         timestamp=timestamp,
-        transaction_hash=row["transaction_hash"],
-        block_number=int(row["block_number"]),
-        pool_id=int(row["pool_id"]),
-        user=row["user"],
-        claim_lock_start=row["claim_lock_start"],
-        claim_lock_end=row["claim_lock_end"]
+        transaction_hash=row["TransactionHash"],
+        block_number=int(row["BlockNumber"]),
+        pool_id=int(row["poolId"]),
+        user_address=row["user"],
+        claim_lock_start=row["claimLockStart"],
+        claim_lock_end=row["claimLockEnd"]
     )
 
 def parse_user_multiplier(row: Dict[str, str]) -> UserMultiplier:
     """Parse a CSV row into a UserMultiplier object."""
-    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S")
     return UserMultiplier(
-        user_claim_locked_id=int(row["user_claim_locked_id"]),
+        user_claim_locked_start=int(row["claimLockStart"]),
+        user_claim_locked_end=int(row["claimLockEnd"]),
         timestamp=timestamp,
-        transaction_hash=row["transaction_hash"],
-        block_number=int(row["block_number"]),
-        pool_id=int(row["pool_id"]),
-        user_address=row["user_address"],
+        transaction_hash=row["TransactionHash"],
+        block_number=int(row["BlockNumber"]),
+        pool_id=int(row["poolId"]),
+        user_address=row["user"],
         multiplier=Decimal(row["multiplier"]) if row.get("multiplier") else None,
-        error_message=row.get("error_message")
     )
 
 def parse_reward_summary(row: Dict[str, str]) -> RewardSummary:
@@ -239,26 +239,38 @@ def parse_reward_summary(row: Dict[str, str]) -> RewardSummary:
 
 def parse_user_staked_event(row: Dict[str, str]) -> UserStakedEvent:
     """Parse a CSV row into a UserStakedEvent object."""
-    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S")
+    
+    # Convert amount to Decimal to maintain precision
+    try:
+        # Handle both regular numbers and scientific notation
+        amount = Decimal(row["Amount"])
+    except (ValueError, InvalidOperation):
+        # If there's any issue, log it and try a different approach
+        logger.warning(f"Error converting amount '{row['Amount']}' to Decimal. Attempting fallback conversion.")
+        # Try to clean the string and convert again
+        cleaned_amount = row["Amount"].strip().replace(',', '')
+        amount = Decimal(cleaned_amount)
+    
     return UserStakedEvent(
         timestamp=timestamp,
-        transaction_hash=row["transaction_hash"],
-        block_number=int(row["block_number"]),
-        pool_id=int(row["pool_id"]),
-        user_address=row["user_address"],
-        amount=int(row["amount"])
+        transaction_hash=row["TransactionHash"],
+        block_number=int(row["BlockNumber"]),
+        pool_id=int(row["PoolId"]),
+        user_address=row["User"],
+        amount=amount
     )
 
 def parse_user_withdrawn_event(row: Dict[str, str]) -> UserWithdrawnEvent:
     """Parse a CSV row into a UserWithdrawnEvent object."""
-    timestamp = datetime.fromtimestamp(int(row["block_timestamp_at_that_date"]))
+    timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S")
     return UserWithdrawnEvent(
         timestamp=timestamp,
-        transaction_hash=row["transaction_hash"],
-        block_number=int(row["block_number"]),
-        pool_id=int(row["pool_id"]),
-        user_address=row["user_address"],
-        amount=Decimal(row["amount"])
+        transaction_hash=row["TransactionHash"],
+        block_number=int(row["BlockNumber"]),
+        pool_id=int(row["PoolId"]),
+        user_address=row["User"],
+        amount=Decimal(row["Amount"])
     )
 
 def parse_overplus_bridged_event(row: Dict[str, str]) -> OverplusBridgedEvent:
@@ -298,12 +310,12 @@ DATA_MAPPING = [
         "repository_class": UserMultiplierRepository,
         "parser": parse_user_multiplier
     },
-    {
-        "csv_file": "MASTER MOR EXPLORER - RewardSum.csv",
-        "table_name": "reward_summary",
-        "repository_class": RewardSummaryRepository,
-        "parser": parse_reward_summary
-    },
+    # {
+    #     "csv_file": "MASTER MOR EXPLORER - RewardSum.csv",
+    #     "table_name": "reward_summary",
+    #     "repository_class": RewardSummaryRepository,
+    #     "parser": parse_reward_summary
+    # },
     {
         "csv_file": "MASTER MOR EXPLORER - UserStaked.csv",
         "table_name": "user_staked_events",
@@ -382,7 +394,7 @@ def import_data_from_csv(csv_file: str, parser: Callable, repository_class: Type
                     record = parser(row)
                     records.append(record)
                 except Exception as e:
-                    logger.warning(f"Error processing row: {row}. Error: {str(e)}")
+                    logger.warning(f"{file.name} - Error processing row: {row}. Error: {str(e)}")
                     continue
         
         if not records:

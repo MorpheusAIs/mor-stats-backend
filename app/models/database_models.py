@@ -16,13 +16,14 @@ class UserClaimLocked(BaseModel):
     block_number: int = Field(..., description="Block number")
     pool_id: int = Field(..., description="Pool ID")
     user_address: str = Field(..., description="User address")
-    claim_lock_start: datetime = Field(..., description="ClaimLockStart")
-    claim_lock_end: datetime = Field(..., description="ClaimLockEnd")
+    claim_lock_start: int = Field(..., description="ClaimLockStart")
+    claim_lock_end: int = Field(..., description="ClaimLockEnd")
 
 class UserMultiplier(BaseModel):
     """Model for user_multiplier table."""
     id: Optional[int] = Field(None, description="Primary key")
-    user_claim_locked_id: int = Field(..., description="Reference to user_claim_locked table")
+    user_claim_locked_start: int = Field(..., description="Reference to user_claim_locked table")
+    user_claim_locked_end: int = Field(..., description="Reference to user_claim_locked table")
     timestamp: datetime = Field(..., description="Event timestamp")
     transaction_hash: str = Field(..., description="Transaction hash")
     block_number: int = Field(..., description="Block number")
