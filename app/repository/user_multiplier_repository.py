@@ -171,13 +171,10 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
             record_dict = record.model_dump(exclude_none=True)
             values_list.append(tuple(record_dict[col] for col in columns))
 
-        # Build and execute the query with ON CONFLICT handling
+        # Build and execute the query without ON CONFLICT handling
         sql = f"""
         INSERT INTO {self.table_name} ({column_str})
         VALUES ({placeholders})
-        ON CONFLICT (user_address, pool_id, block_number) 
-        DO UPDATE SET 
-            multiplier = EXCLUDED.multiplier
         """
 
         with self.db.transaction() as cursor:

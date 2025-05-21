@@ -134,7 +134,7 @@ TABLE_DEFINITIONS = [
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
             user_address varchar(255) NOT NULL,
-            amount NUMERIC(36, 18) NOT NULL
+            amount NUMERIC(78, 38) NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_block_number ON user_staked_events (block_number);
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_user ON user_staked_events (user_address);
@@ -148,7 +148,7 @@ TABLE_DEFINITIONS = [
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
             user_address varchar(255) NOT NULL,
-            amount NUMERIC(36, 18) NOT NULL,
+            amount NUMERIC(78, 38) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_block_number ON user_withdrawn_events (block_number);
@@ -161,7 +161,7 @@ TABLE_DEFINITIONS = [
             timestamp TIMESTAMP NOT NULL,
             transaction_hash varchar(255) NOT NULL,
             block_number BIGINT NOT NULL,
-            amount NUMERIC(36, 18) NOT NULL,
+            amount NUMERIC(78, 38) NOT NULL,
             unique_id varchar(255) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -218,6 +218,7 @@ def parse_user_multiplier(row: Dict[str, str]) -> UserMultiplier:
     if row.get("multiplier"):
         try:
             # Handle both regular numbers and scientific notation
+            # Keep full precision
             multiplier = Decimal(row["multiplier"])
         except (ValueError, InvalidOperation):
             # If there's any issue, log it and try a different approach

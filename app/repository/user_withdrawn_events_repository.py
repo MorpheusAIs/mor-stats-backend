@@ -286,11 +286,10 @@ class UserWithdrawnEventsRepository(BaseRepository[UserWithdrawnEvent]):
                 del record_dict['id']
             values_list.append(tuple(record_dict[col] for col in columns))
 
-        # Build and execute the query with ON CONFLICT handling
+        # Build and execute the query without ON CONFLICT handling
         sql = f"""
         INSERT INTO {self.table_name} ({column_str})
         VALUES ({placeholders})
-        ON CONFLICT (transaction_hash, block_number) DO NOTHING
         """
 
         with self.db.transaction() as cursor:
