@@ -48,8 +48,10 @@ logger = logging.getLogger(__name__)
 DATA_DIR = './data'
 
 # Define table creation SQL statements
-TABLE_DEFINITIONS = {
-    "circulating_supply": """
+# Using a list to ensure tables are created in the correct order (important for foreign key constraints)
+TABLE_DEFINITIONS = [
+    # Basic tables with no dependencies
+    ("circulating_supply", """
         CREATE TABLE IF NOT EXISTS circulating_supply (
             id SERIAL PRIMARY KEY,
             date DATE NOT NULL,
@@ -61,8 +63,8 @@ TABLE_DEFINITIONS = {
         CREATE INDEX IF NOT EXISTS idx_circulating_supply_date ON circulating_supply (date);
         CREATE INDEX IF NOT EXISTS idx_circulating_supply_timestamp ON circulating_supply (block_timestamp_at_that_date);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_circulating_supply_date_unique ON circulating_supply (date);
-    """,
-    "emissions": """
+    """),
+    ("emissions", """
         CREATE TABLE IF NOT EXISTS emissions (
             id SERIAL PRIMARY KEY,
             day INTEGER NOT NULL,
@@ -79,8 +81,8 @@ TABLE_DEFINITIONS = {
         CREATE INDEX IF NOT EXISTS idx_emissions_date ON emissions (date);
         CREATE INDEX IF NOT EXISTS idx_emissions_day ON emissions (day);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_emissions_date_unique ON emissions (date);
-    """,
-    "user_claim_locked": """
+    """),
+    ("user_claim_locked", """
         CREATE TABLE IF NOT EXISTS user_claim_locked (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
@@ -94,26 +96,24 @@ TABLE_DEFINITIONS = {
         );
         CREATE INDEX IF NOT EXISTS idx_user_claim_locked_block_number ON user_claim_locked (block_number);
         CREATE INDEX IF NOT EXISTS idx_user_claim_locked_user ON user_claim_locked (user_address);
-        CREATE INDEX IF NOT EXISTS idx_user_claim_locked_pool_id ON user_claim_locked (pool_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_claim_locked_tx_block ON user_claim_locked (transaction_hash, block_number);
-    """,
-    "user_multiplier": """
+    """),
+    # Tables with dependencies - user_multiplier depends on user_claim_locked
+    ("user_multiplier", """
         CREATE TABLE IF NOT EXISTS user_multiplier (
             id SERIAL PRIMARY KEY,
-            user_claim_locked_id INTEGER NOT NULL,
+            user_claim_locked_start bigint NOT NULL,
+            user_claim_locked_end bigint NOT NULL,
             timestamp TIMESTAMP NOT NULL,
             transaction_hash TEXT NOT NULL,
             block_number BIGINT NOT NULL,
             pool_id INTEGER NOT NULL,
             user_address varchar(255) NOT NULL,
-            multiplier NUMERIC(36, 18),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_claim_locked_id) REFERENCES user_claim_locked (id)
+            multiplier NUMERIC(78, 38),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_user_multiplier_user ON user_multiplier (user_address);
-        CREATE INDEX IF NOT EXISTS idx_user_multiplier_pool_id ON user_multiplier (pool_id);
-    """,
-    "reward_summary": """
+    """),
+    ("reward_summary", """
         CREATE TABLE IF NOT EXISTS reward_summary (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
@@ -125,8 +125,8 @@ TABLE_DEFINITIONS = {
         );
         CREATE INDEX IF NOT EXISTS idx_reward_summary_timestamp ON reward_summary (timestamp);
         CREATE INDEX IF NOT EXISTS idx_reward_summary_category ON reward_summary (category);
-    """,
-    "user_staked_events": """
+    """),
+    ("user_staked_events", """
         CREATE TABLE IF NOT EXISTS user_staked_events (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
@@ -139,9 +139,8 @@ TABLE_DEFINITIONS = {
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_block_number ON user_staked_events (block_number);
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_user ON user_staked_events (user_address);
         CREATE INDEX IF NOT EXISTS idx_user_staked_events_pool ON user_staked_events (pool_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_staked_events_tx_block ON user_staked_events (transaction_hash, block_number);
-    """,
-    "user_withdrawn_events": """
+    """),
+    ("user_withdrawn_events", """
         CREATE TABLE IF NOT EXISTS user_withdrawn_events (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
@@ -155,9 +154,8 @@ TABLE_DEFINITIONS = {
         CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_block_number ON user_withdrawn_events (block_number);
         CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_user ON user_withdrawn_events (user_address);
         CREATE INDEX IF NOT EXISTS idx_user_withdrawn_events_pool ON user_withdrawn_events (pool_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_withdrawn_events_tx_block ON user_withdrawn_events (transaction_hash, block_number);
-    """,
-    "overplus_bridged_events": """
+    """),
+    ("overplus_bridged_events", """
         CREATE TABLE IF NOT EXISTS overplus_bridged_events (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMP NOT NULL,
@@ -169,9 +167,8 @@ TABLE_DEFINITIONS = {
         );
         CREATE INDEX IF NOT EXISTS idx_overplus_bridged_events_block_number ON overplus_bridged_events (block_number);
         CREATE INDEX IF NOT EXISTS idx_overplus_bridged_events_unique_id ON overplus_bridged_events (unique_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_overplus_bridged_events_tx_block ON overplus_bridged_events (transaction_hash, block_number);
-    """
-}
+    """)
+]
 
 # Define CSV file parsers for each data type
 def parse_circulating_supply(row: Dict[str, str]) -> CirculatingSupply:
@@ -215,6 +212,24 @@ def parse_user_claim_locked(row: Dict[str, str]) -> UserClaimLocked:
 def parse_user_multiplier(row: Dict[str, str]) -> UserMultiplier:
     """Parse a CSV row into a UserMultiplier object."""
     timestamp = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S")
+    
+    # Handle multiplier with error checking
+    multiplier = None
+    if row.get("multiplier"):
+        try:
+            # Handle both regular numbers and scientific notation
+            multiplier = Decimal(row["multiplier"])
+        except (ValueError, InvalidOperation):
+            # If there's any issue, log it and try a different approach
+            logger.warning(f"Error converting multiplier '{row['multiplier']}' to Decimal. Attempting fallback conversion.")
+            # Try to clean the string and convert again
+            try:
+                cleaned_multiplier = row["multiplier"].strip().replace(',', '')
+                multiplier = Decimal(cleaned_multiplier)
+            except (ValueError, InvalidOperation) as e:
+                logger.error(f"Failed to parse multiplier value '{row['multiplier']}' after cleaning: {str(e)}")
+                multiplier = None
+    
     return UserMultiplier(
         user_claim_locked_start=int(row["claimLockStart"]),
         user_claim_locked_end=int(row["claimLockEnd"]),
@@ -223,7 +238,7 @@ def parse_user_multiplier(row: Dict[str, str]) -> UserMultiplier:
         block_number=int(row["BlockNumber"]),
         pool_id=int(row["poolId"]),
         user_address=row["user"],
-        multiplier=Decimal(row["multiplier"]) if row.get("multiplier") else None,
+        multiplier=multiplier,
     )
 
 def parse_reward_summary(row: Dict[str, str]) -> RewardSummary:
@@ -358,7 +373,7 @@ def ensure_tables_exist():
         raise DatabaseError("Database connection error", details={"error": str(e)})
     try:
         with db.cursor() as cursor:
-            for table_name, create_sql in TABLE_DEFINITIONS.items():
+            for table_name, create_sql in TABLE_DEFINITIONS:
                 cursor.execute(create_sql)
                 logger.info(f"Ensured table {table_name} exists with required structure")
     except Exception as e:
