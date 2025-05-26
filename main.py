@@ -34,7 +34,7 @@ scheduler = AsyncIOScheduler()
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ logging.getLogger("dune_client").disabled = True
 async def update_cache_task() -> None:
     """Update all cache data."""
     try:
-        # Update all cache items
+        logger.info("Updating cache")
         set_cache_item('staking_metrics', await get_analyze_mor_master_dict())
         set_cache_item('total_and_circ_supply', await get_combined_supply_data())
         set_cache_item('prices_and_volume', await get_historical_prices_and_trading_volume())
@@ -133,9 +133,8 @@ async def update_cache_task() -> None:
         set_cache_item('code_metrics', await get_total_weights_and_contributors())
         set_cache_item('chain_wise_supplies', get_chain_wise_circ_supply())
 
-        slack_notification("Finished updating cache")
+        logger.info("Finished updating cache")
     except Exception as e:
-        slack_notification(f"Error in cache update task: {str(e)}")
         logger.error(f"Error in cache update task: {str(e)}")
 
 
@@ -149,6 +148,7 @@ async def root():
 async def get_mor_staker_analysis():
     """Get MOR staker analysis."""
     cached_data = get_cache_item('staking_metrics')
+    logger.debug(f"Cache access for 'staking_metrics': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -166,6 +166,7 @@ async def get_mor_staker_analysis():
 async def give_more_reward():
     """Get MOR reward information."""
     cached_data = get_cache_item('give_mor_reward')
+    logger.debug(f"Cache access for 'give_mor_reward': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -183,6 +184,7 @@ async def give_more_reward():
 async def get_stake_info():
     """Get stake information."""
     cached_data = get_cache_item('stake_info')
+    logger.debug(f"Cache access for 'stake_info': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -200,6 +202,7 @@ async def get_stake_info():
 async def total_and_circ_supply():
     """Get total and circulating supply data."""
     cached_data = get_cache_item('total_and_circ_supply')
+    logger.debug(f"Cache access for 'total_and_circ_supply': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         logger.info("Returning cached total_and_circ_supply data")
         return DataResponse(data=cached_data)
@@ -219,6 +222,7 @@ async def total_and_circ_supply():
 async def historical_prices_and_volume():
     """Get historical prices and trading volume data."""
     cached_data = get_cache_item('prices_and_volume')
+    logger.debug(f"Cache access for 'prices_and_volume': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -236,6 +240,7 @@ async def historical_prices_and_volume():
 async def market_cap():
     """Get market cap data."""
     cached_data = get_cache_item('market_cap')
+    logger.debug(f"Cache access for 'market_cap': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -256,6 +261,7 @@ async def market_cap():
 async def mor_holders_by_range():
     """Get MOR holders by range data."""
     cached_data = get_cache_item('mor_holders_by_range')
+    logger.debug(f"Cache access for 'mor_holders_by_range': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         logger.info("Returning cached mor_holders_by_range data")
         return DataResponse(data=cached_data)
@@ -276,6 +282,7 @@ async def mor_holders_by_range():
 async def locked_and_burnt_mor():
     """Get locked and burnt MOR data."""
     cached_data = get_cache_item('locked_and_burnt_mor')
+    logger.debug(f"Cache access for 'locked_and_burnt_mor': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -292,6 +299,7 @@ async def locked_and_burnt_mor():
 async def get_protocol_liquidity():
     """Get protocol liquidity data."""
     cached_data = get_cache_item('protocol_liquidity')
+    logger.debug(f"Cache access for 'protocol_liquidity': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -317,6 +325,7 @@ async def get_cache_update_time():
 async def capital_metrics():
     """Get capital metrics data."""
     cached_data = get_cache_item('capital_metrics')
+    logger.debug(f"Cache access for 'capital_metrics': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -333,6 +342,7 @@ async def capital_metrics():
 async def get_github_commits():
     """Get GitHub commits data."""
     cached_data = get_cache_item('github_commits')
+    logger.debug(f"Cache access for 'github_commits': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -349,6 +359,7 @@ async def get_github_commits():
 async def get_historical_mor_staked():
     """Get historical MOR rewards locked data."""
     cached_data = get_cache_item('historical_mor_rewards_locked')
+    logger.debug(f"Cache access for 'historical_mor_rewards_locked': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -365,6 +376,7 @@ async def get_historical_mor_staked():
 async def get_code_metrics():
     """Get code metrics data."""
     cached_data = get_cache_item('code_metrics')
+    logger.debug(f"Cache access for 'code_metrics': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
@@ -381,6 +393,7 @@ async def get_code_metrics():
 async def get_circ_supply_by_chains():
     """Get chain-wise circulating supply data."""
     cached_data = get_cache_item('chain_wise_supplies')
+    logger.debug(f"Cache access for 'chain_wise_supplies': {'hit' if cached_data else 'miss'}, data: {cached_data}")
     if cached_data:
         return DataResponse(data=cached_data)
 
