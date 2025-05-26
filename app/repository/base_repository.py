@@ -52,9 +52,22 @@ class BaseRepository(Generic[T]):
         RETURNING *
         """
 
-        # Execute the query
-        result = self.db.fetchone(sql, values)
-        return self.model_class(**result) if result else None
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, values)
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if result:
+                # Convert tuple to dictionary using column names
+                dict_result = dict(zip(columns, result))
+                return self.model_class(**dict_result)
+            else:
+                return None
 
     def get_by_id(self, id: int) -> Optional[T]:
         """
@@ -67,8 +80,23 @@ class BaseRepository(Generic[T]):
             The record, or None if not found
         """
         sql = f"SELECT * FROM {self.table_name} WHERE id = %s"
-        result = self.db.fetchone(sql, [id])
-        return self.model_class(**result) if result else None
+        
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [id])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if result:
+                # Convert tuple to dictionary using column names
+                dict_result = dict(zip(columns, result))
+                return self.model_class(**dict_result)
+            else:
+                return None
 
     def get_all(self, limit: int = 100, offset: int = 0) -> List[T]:
         """
@@ -82,8 +110,25 @@ class BaseRepository(Generic[T]):
             List of records
         """
         sql = f"SELECT * FROM {self.table_name} ORDER BY id LIMIT %s OFFSET %s"
-        results = self.db.fetchall(sql, [limit, offset])
-        return [self.model_class(**result) for result in results]
+        
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [limit, offset])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+            
+            # Create model instances from dictionaries
+            return [self.model_class(**dict_result) for dict_result in dict_results]
 
     def update(self, id: int, data: Dict[str, Any]) -> Optional[T]:
         """
@@ -112,9 +157,22 @@ class BaseRepository(Generic[T]):
         RETURNING *
         """
 
-        # Execute the query
-        result = self.db.fetchone(sql, values)
-        return self.model_class(**result) if result else None
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, values)
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if result:
+                # Convert tuple to dictionary using column names
+                dict_result = dict(zip(columns, result))
+                return self.model_class(**dict_result)
+            else:
+                return None
 
     def delete(self, id: int) -> bool:
         """
@@ -127,8 +185,12 @@ class BaseRepository(Generic[T]):
             True if the record was deleted, False otherwise
         """
         sql = f"DELETE FROM {self.table_name} WHERE id = %s RETURNING id"
-        result = self.db.fetchone(sql, [id])
-        return result is not None
+        
+        # Execute the query directly with a cursor
+        with self.db.cursor() as cur:
+            cur.execute(sql, [id])
+            result = cur.fetchone()
+            return result is not None
 
     def count(self) -> int:
         """
@@ -138,5 +200,14 @@ class BaseRepository(Generic[T]):
             The number of records
         """
         sql = f"SELECT COUNT(*) as count FROM {self.table_name}"
-        result = self.db.fetchone(sql)
-        return result['count'] if result else 0
+        
+        # Execute the query directly with a cursor
+        with self.db.cursor() as cur:
+            cur.execute(sql)
+            result = cur.fetchone()
+            
+            if result:
+                # Since we're using a tuple, get the first element
+                return result[0]
+            else:
+                return 0

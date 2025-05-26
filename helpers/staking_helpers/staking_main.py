@@ -64,8 +64,8 @@ def get_user_multiplier_dataframe():
             'pool_id': 'poolId',
             'user_address': 'user',
             'multiplier': 'multiplier',
-            'claim_lock_start': 'claimLockStart',
-            'claim_lock_end': 'claimLockEnd'
+            'user_claim_locked_start': 'claimLockStart',
+            'user_claim_locked_end': 'claimLockEnd'
         })
         
         # Add missing columns that might be expected
@@ -77,14 +77,17 @@ def get_user_multiplier_dataframe():
         # Try to get claim lock data from the blockchain for each user
         try:
             for i, row in df.iterrows():
+                logger.debug(f"row:\n{str(row)}")
                 user = row['user']
                 pool_id = row['poolId']
                 try:
                     user_data = distribution_contract.functions.usersData(user, pool_id).call()
-                    df.at[i, 'claimLockStart'] = user_data[2]  # Assuming index 2 is claimLockStart
-                    df.at[i, 'claimLockEnd'] = user_data[3]    # Assuming index 3 is claimLockEnd
+                    logger.debug(f"contract user data {str(user_data)}")
+                    df.at[i, 'claimLockStart'] = user_data[4]  # index 4 is claimLockStart
+                    df.at[i, 'claimLockEnd'] = user_data[5]    # index 5 is claimLockEnd
                 except Exception as e:
                     logger.warning(f"Could not get claim lock data for user {user} in pool {pool_id}: {str(e)}")
+                
         except Exception as e:
             logger.error(f"Error getting claim lock data: {str(e)}")
             

@@ -26,8 +26,23 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
             The record, or None if not found
         """
         sql = f"SELECT * FROM {self.table_name} WHERE user_claim_locked_id = %s"
-        result = self.db.fetchone(sql, [user_claim_locked_id])
-        return UserMultiplier(**result) if result else None
+        
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [user_claim_locked_id])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if result:
+                # Convert tuple to dictionary using column names
+                dict_result = dict(zip(columns, result))
+                return UserMultiplier(**dict_result)
+            else:
+                return None
 
     def get_by_user_address(self, user_address: str, limit: int = 100, offset: int = 0) -> List[UserMultiplier]:
         """
@@ -47,8 +62,24 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         ORDER BY block_number DESC 
         LIMIT %s OFFSET %s
         """
-        results = self.db.fetchall(sql, [user_address, limit, offset])
-        return [UserMultiplier(**result) for result in results]
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [user_address, limit, offset])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+            
+            # Create model instances from dictionaries
+            return [UserMultiplier(**dict_result) for dict_result in dict_results]
 
     def get_by_pool_id(self, pool_id: int, limit: int = 100, offset: int = 0) -> List[UserMultiplier]:
         """
@@ -68,8 +99,24 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         ORDER BY block_number DESC 
         LIMIT %s OFFSET %s
         """
-        results = self.db.fetchall(sql, [pool_id, limit, offset])
-        return [UserMultiplier(**result) for result in results]
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [pool_id, limit, offset])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+            
+            # Create model instances from dictionaries
+            return [UserMultiplier(**dict_result) for dict_result in dict_results]
 
     def get_by_user_and_pool(self, user_address: str, pool_id: int) -> List[UserMultiplier]:
         """
@@ -87,8 +134,24 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         WHERE user_address = %s AND pool_id = %s 
         ORDER BY block_number DESC
         """
-        results = self.db.fetchall(sql, [user_address, pool_id])
-        return [UserMultiplier(**result) for result in results]
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [user_address, pool_id])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+            
+            # Create model instances from dictionaries
+            return [UserMultiplier(**dict_result) for dict_result in dict_results]
 
     def get_latest_by_user_and_pool(self, user_address: str, pool_id: int) -> Optional[UserMultiplier]:
         """
@@ -107,8 +170,22 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         ORDER BY block_number DESC 
         LIMIT 1
         """
-        result = self.db.fetchone(sql, [user_address, pool_id])
-        return UserMultiplier(**result) if result else None
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [user_address, pool_id])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if result:
+                # Convert tuple to dictionary using column names
+                dict_result = dict(zip(columns, result))
+                return UserMultiplier(**dict_result)
+            else:
+                return None
 
     def get_by_date_range(self, start_date: datetime, end_date: datetime) -> List[UserMultiplier]:
         """
@@ -126,8 +203,24 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         WHERE timestamp BETWEEN %s AND %s 
         ORDER BY timestamp
         """
-        results = self.db.fetchall(sql, [start_date, end_date])
-        return [UserMultiplier(**result) for result in results]
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql, [start_date, end_date])
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+            
+            # Create model instances from dictionaries
+            return [UserMultiplier(**dict_result) for dict_result in dict_results]
 
     def get_unprocessed_records(self) -> List[dict]:
         """
@@ -137,13 +230,30 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
             List of unprocessed records
         """
         sql = """
-        SELECT ucl.id, ucl.timestamp, ucl.transaction_hash, ucl.block_number, ucl.poolid, ucl.user
+        SELECT ucl.id, ucl.timestamp, ucl.transaction_hash, ucl.block_number, ucl.pool_id as pool_id, ucl.user_address as user_address
         FROM user_claim_locked ucl
-        LEFT JOIN user_multiplier um 
+        LEFT JOIN user_multiplier um
         ON ucl.id = um.user_claim_locked_id
         WHERE um.id IS NULL
         """
-        return self.db.fetchall(sql)
+        
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql)
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+            
+            return dict_results
 
     def bulk_insert(self, records: List[UserMultiplier]) -> int:
         """
