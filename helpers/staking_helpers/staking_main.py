@@ -481,6 +481,4 @@ async def get_analyze_mor_master_dict():
         "emissionreward_analysis": emissionreward_analysis
     }
 
-    # print(json.dumps(staking_metrics, indent=4))
-
     return staking_metrics

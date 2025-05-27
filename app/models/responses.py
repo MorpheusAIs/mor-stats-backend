@@ -33,11 +33,9 @@ class MetaData(BaseModel):
     total_items: int = Field(..., description="Total number of items")
     total_pages: int = Field(..., description="Total number of pages")
 
-
 class BaseResponse(BaseModel, Generic[T]):
     """Base response model for all API responses."""
     success: bool = Field(True, description="Whether the request was successful")
-    message: Optional[str] = Field(None, description="Response message")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
 
 
