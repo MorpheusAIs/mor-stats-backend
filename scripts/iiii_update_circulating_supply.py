@@ -16,19 +16,6 @@ EVENT_NAME = "CirculatingSupply"
 
 web3 = Web3Provider.get_instance()
 
-def ensure_circulating_supply_table_exists():
-    """Check if the table exists - table creation is now handled by the seed script"""
-    try:
-        repository = CirculatingSupplyRepository()
-        # Check if the table exists
-        if repository.count() >= 0:  # This will fail if the table doesn't exist
-            logger.info(f"Table {TABLE_NAME} exists")
-            return True
-    except Exception as e:
-        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
-        logger.error(f"Error checking if table exists: {str(e)}")
-        raise Exception(f"Table {TABLE_NAME} does not exist")
-
 def get_latest_circulating_supply_record():
     """Get the latest circulating supply record from the database using the repository"""
     try:
@@ -88,9 +75,6 @@ def get_block_number_by_timestamp(timestamp):
 
 def process_circulating_supply_events():
     try:
-        # Ensure the table exists
-        ensure_circulating_supply_table_exists()
-
         # Get the latest record from the database
         latest_record = get_latest_circulating_supply_record()
         if not latest_record:

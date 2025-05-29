@@ -25,19 +25,6 @@ RPC_URL = ETH_RPC_URL
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
-def ensure_reward_summary_table_exists():
-    """Check if the table exists - table creation is now handled by the seed script"""
-    try:
-        repository = RewardSummaryRepository()
-        # Check if the table exists
-        if repository.count() >= 0:  # This will fail if the table doesn't exist
-            logger.info(f"Table {TABLE_NAME} exists")
-            return True
-    except Exception as e:
-        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
-        logger.error(f"Error checking if table exists: {str(e)}")
-        raise Exception(f"Table {TABLE_NAME} does not exist")
-
 def get_user_reward_data():
     """Get user and pool data from the user_multiplier table using the repository"""
     try:
@@ -156,9 +143,6 @@ def insert_reward_summary_events(summary_data, block_24_hours_ago, latest_block)
 
 async def process_reward_events():
     try:
-        # Ensure table exists
-        ensure_reward_summary_table_exists()
-
         # Fetch user data from database
         users = get_user_reward_data()
 

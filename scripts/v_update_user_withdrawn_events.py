@@ -20,19 +20,6 @@ RPC_URL = ETH_RPC_URL
 web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
-def ensure_user_withdrawn_events_table_exists():
-    """Check if the table exists - table creation is now handled by the seed script"""
-    try:
-        repo = UserWithdrawnEventsRepository()
-        # Check if the table exists
-        if repo.count() >= 0:  # This will fail if the table doesn't exist
-            logger.info(f"Table {TABLE_NAME} exists")
-            return True
-    except Exception as e:
-        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
-        logger.error(f"Error checking if table exists: {str(e)}")
-        raise Exception(f"Table {TABLE_NAME} does not exist")
-
 
 def insert_user_withdrawn_events(user_withdrawn_events: list[UserWithdrawnEvent]):
     """Insert user withdrawn events into the database using the repository"""
@@ -53,9 +40,6 @@ def insert_user_withdrawn_events(user_withdrawn_events: list[UserWithdrawnEvent]
 def process_user_withdrawn_events():
     """Main function to process UserWithdrawn events and store them in PostgreSQL"""
     try:
-        # Ensure database table exists
-        ensure_user_withdrawn_events_table_exists()
-
         # Get the latest block number from the chain
         latest_block = web3.eth.get_block('latest')['number']
 

@@ -25,32 +25,6 @@ w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(ETH_RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
 
-def ensure_user_multiplier_table_exists():
-    """Check if the table exists - table creation is now handled by the seed script"""
-    try:
-        db = get_db()
-        
-        with db.cursor() as cursor:
-            # Just check if the table exists
-            check_query = f"""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables
-                WHERE table_schema = 'public'
-                AND table_name = '{TABLE_NAME}'
-            );
-            """
-            cursor.execute(check_query)
-            exists = cursor.fetchone()['exists']
-            
-            if not exists:
-                logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
-                raise Exception(f"Table {TABLE_NAME} does not exist")
-                
-            logger.info(f"Table {TABLE_NAME} exists")
-    except Exception as e:
-        logger.error(f"Error checking if table exists: {str(e)}")
-        raise
-
 
 def get_unprocessed_user_multiplier_records():
     """Get records from user_claim_locked that haven't been processed yet"""
@@ -135,9 +109,6 @@ def insert_user_multiplier_events(user_multiplier_events: list[UserMultiplier]):
 
 async def process_user_multiplier_events():
     try:
-        # Ensure output table exists
-        ensure_user_multiplier_table_exists()
-
         # Get unprocessed records from input table
         records = get_unprocessed_user_multiplier_records()
 

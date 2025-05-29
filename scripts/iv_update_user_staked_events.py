@@ -20,32 +20,6 @@ RPC_URL = ETH_RPC_URL
 web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
-def ensure_user_staked_events_table_exists():
-    """Check if the table exists - table creation is now handled by the seed script"""
-    try:
-        db = get_db()
-        
-        with db.cursor() as cursor:
-            # Just check if the table exists
-            check_query = f"""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables
-                WHERE table_schema = 'public'
-                AND table_name = '{TABLE_NAME}'
-            );
-            """
-            cursor.execute(check_query)
-            exists = cursor.fetchone()['exists']
-            
-            if not exists:
-                logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
-                raise Exception(f"Table {TABLE_NAME} does not exist")
-                
-            logger.info(f"Table {TABLE_NAME} exists")
-    except Exception as e:
-        logger.error(f"Error checking if table exists: {str(e)}")
-        raise
-
 def insert_user_staked_events(user_staked_events: list[UserStakedEvent]):
     """Insert user staked events into the database using the repository"""
     try:
@@ -60,9 +34,6 @@ def insert_user_staked_events(user_staked_events: list[UserStakedEvent]):
 def process_user_staked_events():
     """Main function to process UserStaked events and store them in PostgreSQL"""
     try:
-        # Ensure database table exists
-        ensure_user_staked_events_table_exists()
-
         # Get the latest block number from the chain
         latest_block = web3.eth.get_block('latest')['number']
 

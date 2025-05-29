@@ -35,19 +35,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def ensure_emission_table_exists():
-    """Check if the table exists - table creation is now handled by the seed script"""
-    try:
-        repository = EmissionRepository()
-        # Check if the table exists
-        if repository.count() >= 0:  # This will fail if the table doesn't exist
-            logger.info(f"Table {TABLE_NAME} exists")
-            return True
-    except Exception as e:
-        logger.error(f"Table {TABLE_NAME} does not exist. Run 'make seed' first to create all tables.")
-        logger.error(f"Error checking if table exists: {str(e)}")
-        raise Exception(f"Table {TABLE_NAME} does not exist")
-
 
 def parse_emission_data(file_path):
     """
@@ -165,8 +152,7 @@ def process_emission_events(emissions_data=None):
     Returns:
         Number of records inserted/updated
     """
-    # Ensure the table exists
-    ensure_emission_table_exists()
+
     try:
         # If no data provided, try to fetch from the configured source
         if not emissions_data:

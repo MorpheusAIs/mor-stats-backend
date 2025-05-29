@@ -24,46 +24,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def initialize_database():
-    """Initialize the database connection pool."""
-    try:
-        # Create database configuration from settings
-        db_config = DBConfig(
-            host=settings.database.host,
-            port=settings.database.port,
-            database=settings.database.database,
-            user=settings.database.user,
-            password=settings.database.password,
-            minconn=settings.database.minconn,
-            maxconn=settings.database.maxconn,
-            autocommit=settings.database.autocommit
-        )
-        
-        # Initialize the database connection pool
-        db = init_db(db_config)
-        
-        # Test the connection
-        if db.health_check():
-            logger.info("Database connection established successfully")
-            return True
-        else:
-            logger.error("Database health check failed")
-            return False
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}")
-        return False
-
-
-async def run_update_process():
+async def process_blockchain_updates():
     start_time = datetime.now()
     logger.info(f"Starting update process at {start_time}")
 
     try:
-        # Initialize database connection
-        if not initialize_database():
-            raise Exception("Failed to initialize database connection")
-
         # Step 1: Update User Claim Locked Events
         logger.info("Step 1: Updating User Claim Locked Events")
         process_user_claim_locked_events()
@@ -123,7 +88,6 @@ async def run_update_process():
         logger.error(error_message)
         raise
     finally:
-        # Close database connections
         try:
             db = get_db()
             db.close()
@@ -133,4 +97,4 @@ async def run_update_process():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_update_process())
+    asyncio.run(process_blockchain_updates())

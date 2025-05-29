@@ -5,8 +5,8 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from cron_master_processor import run_update_process
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from cron_master_processor import process_blockchain_updates, process_blockchain_updates
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.cache.cache_manager import get_cache_item, get_last_cache_update_time, set_cache_item
@@ -68,7 +68,8 @@ async def lifespan(app: FastAPI):
         # Set up scheduler
         try:
             logger.info("Setting up scheduler")
-            scheduler.add_job(update_cache_task, CronTrigger(hour='*/12'))
+            scheduler.add_job(update_read_cache_task, CronTrigger(hour='*/6'))
+            scheduler.add_job(process_blockchain_updates, CronTrigger(hour='*/12'))
             scheduler.start()
         except Exception as scheduler_error:
             logger.error(f"Scheduler error: {str(scheduler_error)}")
@@ -114,10 +115,10 @@ logging.getLogger("dune_client.models").disabled = True
 logging.getLogger("dune_client").disabled = True
 
 
-async def update_cache_task() -> None:
-    """Update all cache data."""
+async def update_read_cache_task() -> None:
+    """Update all read cache data."""
     try:
-        logger.info("Updating cache")
+        logger.info("Updating read cache")
         set_cache_item('staking_metrics', await get_analyze_mor_master_dict())
         set_cache_item('total_and_circ_supply', await get_combined_supply_data())
         set_cache_item('prices_and_volume', await get_historical_prices_and_trading_volume())
@@ -133,9 +134,9 @@ async def update_cache_task() -> None:
         set_cache_item('code_metrics', await get_total_weights_and_contributors())
         set_cache_item('chain_wise_supplies', get_chain_wise_circ_supply())
 
-        logger.info("Finished updating cache")
+        logger.info("Finished updating read cache")
     except Exception as e:
-        logger.error(f"Error in cache update task: {str(e)}")
+        logger.error(f"Error in read cache update task: {str(e)}")
 
 
 @app.get("/", response_model=MessageResponse)
@@ -407,11 +408,10 @@ async def get_circ_supply_by_chains():
         raise HTTPException(status_code=500, detail="An error occurred")
 
 @app.post("/job/{job_name}/start", status_code=201, response_model=MessageResponse)
-async def start_job(job_name: str, background_tasks: BackgroundTasks):
+async def start_job(job_name: str):
     """Start a background job."""
-    if job_name == "mor_stats":
-        pass
-        background_tasks.add_task(run_update_process)
+    if job_name == "process_blockchain_updates":
+        scheduler.add_job(process_blockchain_updates, trigger='date', run_date=datetime.now())
     else:
         raise HTTPException(status_code=404, detail="Job not found")
 

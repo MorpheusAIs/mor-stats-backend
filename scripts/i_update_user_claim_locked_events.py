@@ -21,41 +21,6 @@ RPC_URL = ETH_RPC_URL
 web3 = Web3Provider.get_instance()
 contract = distribution_contract
 
-def ensure_user_claim_locked_table_exists():
-    """Create the table if it doesn't exist, with columns based on event structure"""
-    try:
-        db = get_db()
-
-        with db.cursor() as cursor:
-            # Get column definitions, assume all event args are text for flexibility
-            columns = [
-                "timestamp TIMESTAMP",
-                "transaction_hash TEXT",
-                "block_number BIGINT",
-                "pool_id BIGINT",
-                "user VARCHAR(42)",
-                "claim_lock_start BIGINT",
-                "claim_lock_end BIGINT"
-            ]
-
-            # Create table if it doesn't exist
-            create_table_query = f"""
-            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                id SERIAL PRIMARY KEY,
-                {', '.join(columns)}
-            )
-            """
-            cursor.execute(create_table_query)
-
-            # Create index on block_number for efficient lookups
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_block_number ON {TABLE_NAME} (block_number)")
-
-            cursor.commit()
-            logger.info(f"Ensured table {TABLE_NAME} exists with required structure")
-    except Exception as e:
-        logger.error(f"Error ensuring table exists: {str(e)}")
-        raise
-
 
 def insert_user_claim_locked_events(user_claim_locked_events: list[UserClaimLocked]):
     try:
@@ -67,8 +32,6 @@ def insert_user_claim_locked_events(user_claim_locked_events: list[UserClaimLock
 
 def process_user_claim_locked_events():
     try:
-        ensure_user_claim_locked_table_exists()
-
         latest_block = web3.eth.get_block('latest')['number']
         last_processed_block = get_last_block_from_db(TABLE_NAME)
 
