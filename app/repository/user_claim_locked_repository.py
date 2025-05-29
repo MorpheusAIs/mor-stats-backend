@@ -118,7 +118,7 @@ class UserClaimLockedRepository(BaseRepository[UserClaimLocked]):
         """
         sql = f"SELECT MAX(block_number) as last_block FROM {self.table_name}"
         result = self.db.fetchone(sql)
-        return result['last_block'] if result and result['last_block'] is not None else None
+        return int(result[0]) if result and result[0] is not None else None
 
     def bulk_insert(self, records: List[UserClaimLocked]) -> int:
         """

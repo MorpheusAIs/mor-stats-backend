@@ -42,6 +42,9 @@ def process_user_claim_locked_events():
 
         events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME, BATCH_SIZE))
         logger.info(f"Processing {len(events)} new {EVENT_NAME} events from block {start_block} to {latest_block}")
+        
+        if(len(events) > 0):
+            logger.info(f"event {str(events[0])}")
 
         if events:
             user_claim_locked_events: list[UserClaimLocked] = []
@@ -51,10 +54,10 @@ def process_user_claim_locked_events():
                     timestamp = datetime.fromtimestamp(web3.eth.get_block(event['blockNumber'])['timestamp']),
                     transaction_hash = event['transactionHash'].hex(),
                     block_number = event['blockNumber'],
-                    user = event['user'],
-                    pool_id = event['poolId'],
-                    claim_lock_start = event['claimLockStart'],
-                    claim_lock_end = event['claimLockEnd']
+                    user_address = event['args']['user'],
+                    pool_id = event['args']['poolId'],
+                    claim_lock_start = event['args']['claimLockStart'],
+                    claim_lock_end = event['args']['claimLockEnd']
                 )
 
                 user_claim_locked_events.append(user_claim_locked)
