@@ -290,3 +290,13 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
         with self.db.transaction() as cursor:
             cursor.executemany(sql, values_list)
             return len(values_list)
+    
+    def clean_table(self) -> bool:
+        sql = f"""
+        DELETE FROM {self.table_name}
+        """
+
+        with self.db.transaction() as cursor:
+            cursor.execute(sql)
+        
+        return True

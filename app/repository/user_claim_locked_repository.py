@@ -28,6 +28,39 @@ class UserClaimLockedRepository(BaseRepository[UserClaimLocked]):
         sql = f"SELECT * FROM {self.table_name} WHERE transaction_hash = %s"
         result = self.db.fetchone(sql, [transaction_hash])
         return UserClaimLocked(**result) if result else None
+    
+    def get_unique_user_pool_combinations(self) -> List[UserClaimLocked]:
+        """
+        Get all unique combinations of pool ID and user address as UserClaimLocked objects.
+        If a user is in multiple pools, they will appear once for each pool they're in.
+        
+        Returns:
+            List of UserClaimLocked objects representing unique user-pool combinations
+        """
+        sql = f"""
+        SELECT DISTINCT pool_id, *
+        FROM {self.table_name}
+        ORDER BY pool_id, user_address
+        """
+    
+        # Execute the query directly with a cursor to get column names
+        with self.db.cursor() as cur:
+            cur.execute(sql)
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch all results
+            results = cur.fetchall()
+            
+            # Convert tuples to dictionaries using column names
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+        
+        # Create model instances from dictionaries
+        return [UserClaimLocked(**dict_result) for dict_result in dict_results]
 
     def get_by_user(self, user_address: str, limit: int = 100, offset: int = 0) -> List[UserClaimLocked]:
         """

@@ -43,9 +43,6 @@ def process_user_claim_locked_events():
         events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME, BATCH_SIZE))
         logger.info(f"Processing {len(events)} new {EVENT_NAME} events from block {start_block} to {latest_block}")
         
-        if(len(events) > 0):
-            logger.info(f"event {str(events[0])}")
-
         if events:
             user_claim_locked_events: list[UserClaimLocked] = []
             for event in events:

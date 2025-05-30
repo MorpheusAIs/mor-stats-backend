@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from dateutil import parser
+from app.repository.user_claim_locked_repository import UserClaimLockedRepository
 from web3 import AsyncWeb3
 from decimal import Decimal
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
-from app.models.database_models import UserMultiplier
+from app.models.database_models import UserClaimLocked, UserMultiplier
 from app.repository import UserMultiplierRepository
 from app.web3.web3_wrapper import get_block_number
 
@@ -39,50 +39,37 @@ def get_unprocessed_user_multiplier_records():
         raise
 
 
-async def get_multiplier(record):
+async def get_multiplier(record: UserClaimLocked) -> UserMultiplier:
     for attempt in range(MAX_RETRIES):
         try:
-            pool_id = int(record['poolid'])
-            user = w3.to_checksum_address(record['user'])
-
-            if isinstance(record['timestamp'], str):
-                timestamp = parser.parse(record['timestamp'])
-            else:
-                timestamp = record['timestamp']
+            user = w3.to_checksum_address(record.user_address)
 
             block_number = await get_block_number()
-            multiplier = await contract.functions.getCurrentUserMultiplier(pool_id, user).call(
+            multiplier = await contract.functions.getCurrentUserMultiplier(record.pool_id, user).call(
                 block_identifier=block_number)
+            logger.info(f"user {str(user)} multiplier: {str(multiplier)}")
 
-            return {
-                'id': record['id'],
-                'timestamp': timestamp,
-                'transaction_hash': record['transaction_hash'],
-                'block_number': record['block_number'],
-                'pool_id': pool_id,
-                'user_address': user,
-                'multiplier': multiplier,
-            }
+            return UserMultiplier(
+                user_claim_locked_start = record.claim_lock_start,
+                user_claim_locked_end = record.claim_lock_end,
+                timestamp = record.timestamp,
+                block_number = block_number,
+                pool_id = record.pool_id,
+                user_address = record.user_address,
+                multiplier = format_multiplier(multiplier)
+            )
         except Exception as e:
             if 'Too Many Requests' in str(e) and attempt < MAX_RETRIES - 1:
                 logger.warning(f"Rate limit hit, retrying in {RETRY_DELAY} seconds...")
                 await asyncio.sleep(RETRY_DELAY)
                 return None
             else:
-                logger.error(f"Error processing record {record['id']}: {str(e)}")
-                return {
-                    'id': record['id'],
-                    'timestamp': record['timestamp'] if isinstance(record['timestamp'], str) else record['timestamp'],
-                    'transaction_hash': record['transaction_hash'],
-                    'block_number': record['block_number'],
-                    'pool_id': int(record['poolid']),
-                    'user_address': record['user'],
-                    'multiplier': None
-                }
+                logger.error(f"Error processing user {user}: poolid {str(record.pool_id,)}, error {str(e)}")
+                return None
     return None
 
 
-async def process_batch(batch):
+async def process_batch(batch : list[UserClaimLocked]):
     tasks = [get_multiplier(record) for record in batch]
     return await asyncio.gather(*tasks)
 
@@ -109,52 +96,28 @@ def insert_user_multiplier_events(user_multiplier_events: list[UserMultiplier]):
 
 async def process_user_multiplier_events():
     try:
-        # Get unprocessed records from input table
-        records = get_unprocessed_user_multiplier_records()
+        user_multiplier_repository = UserClaimLockedRepository()
+        records = user_multiplier_repository.get_unique_user_pool_combinations()
 
-        if not records:
-            logger.info(f"No new records to process for {EVENT_NAME}")
-            return
+        user_multiplier_repository = UserMultiplierRepository()
+        user_multiplier_repository.clean_table()      
 
-        # Split into batches
         batches = [records[i:i + BATCH_SIZE] for i in range(0, len(records), BATCH_SIZE)]
 
         total_processed = 0
         for i, batch in enumerate(batches):
             logger.info(f"Processing batch {i + 1}/{len(batches)}")
 
-            # Process batch and get multipliers
             processed_records = await process_batch(batch)
 
-            # Convert to UserMultiplier objects
-            user_multiplier_events = []
-            for record in processed_records:
-                if record:
-                    multiplier = format_multiplier(record['multiplier'])
-                    
-                    user_multiplier = UserMultiplier(
-                        id=None,
-                        user_claim_locked_start=record['id'],
-                        timestamp=record['timestamp'],
-                        transaction_hash=record['transaction_hash'],
-                        block_number=record['block_number'],
-                        pool_id=record['pool_id'],
-                        user_address=record['user_address'],
-                        multiplier=multiplier
-                    )
-                    
-                    user_multiplier_events.append(user_multiplier)
-
-            # Insert results into database
-            if user_multiplier_events:
-                insert_user_multiplier_events(user_multiplier_events)
+            if processed_records:
+                insert_user_multiplier_events(processed_records)
 
             total_processed += len(batch)
             logger.info(f"Completed batch {i + 1}/{len(batches)}")
 
-            # Add delay between batches to prevent rate limiting
             if i < len(batches) - 1:
-                await asyncio.sleep(1)
+                await asyncio.sleep(5)
 
         logger.info(f"Successfully processed and stored {EVENT_NAME} for {total_processed} users")
 
