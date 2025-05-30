@@ -47,12 +47,13 @@ async def get_multiplier(record: UserClaimLocked) -> UserMultiplier:
             block_number = await get_block_number()
             multiplier = await contract.functions.getCurrentUserMultiplier(record.pool_id, user).call(
                 block_identifier=block_number)
-            logger.info(f"user {str(user)} multiplier: {str(multiplier)}")
+            logger.info(f"user {str(user)}, pool_id {str(record.pool_id)}, multiplier: {str(multiplier)}")
 
             return UserMultiplier(
                 user_claim_locked_start = record.claim_lock_start,
                 user_claim_locked_end = record.claim_lock_end,
                 timestamp = record.timestamp,
+                transaction_hash = record.transaction_hash,
                 block_number = block_number,
                 pool_id = record.pool_id,
                 user_address = record.user_address,
