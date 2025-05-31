@@ -26,23 +26,23 @@ class EmissionRepository(BaseRepository[Emission]):
         Returns:
             The record, or None if not found
         """
-        sql = f"SELECT * FROM {self.table_name} WHERE date = %s"
-        result = self.db.fetchone(sql, [date_value])
-        return Emission(**result) if result else None
-
-    def get_by_day(self, day: int) -> Optional[Emission]:
-        """
-        Get a record by day number.
-        
-        Args:
-            day: The day number to query
+        # Use cursor directly to get column names
+        with self.db.cursor() as cur:
+            sql = f"SELECT * FROM {self.table_name} WHERE date = %s"
+            cur.execute(sql, [date_value])
             
-        Returns:
-            The record, or None if not found
-        """
-        sql = f"SELECT * FROM {self.table_name} WHERE day = %s"
-        result = self.db.fetchone(sql, [day])
-        return Emission(**result) if result else None
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if not result:
+                return None
+            
+            # Convert tuple to dictionary using column names
+            dict_result = dict(zip(columns, result))
+            return Emission(**dict_result)
 
     def get_latest(self) -> Optional[Emission]:
         """
@@ -51,9 +51,23 @@ class EmissionRepository(BaseRepository[Emission]):
         Returns:
             The latest record, or None if no records exist
         """
-        sql = f"SELECT * FROM {self.table_name} ORDER BY date DESC LIMIT 1"
-        result = self.db.fetchone(sql)
-        return Emission(**result) if result else None
+        # Use cursor directly to get column names
+        with self.db.cursor() as cur:
+            sql = f"SELECT * FROM {self.table_name} ORDER BY date DESC LIMIT 1"
+            cur.execute(sql)
+            
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch the result
+            result = cur.fetchone()
+            
+            if not result:
+                return None
+            
+            # Convert tuple to dictionary using column names
+            dict_result = dict(zip(columns, result))
+            return Emission(**dict_result)
 
     def get_by_date_range(self, start_date: date, end_date: date) -> List[Emission]:
         """
@@ -66,144 +80,23 @@ class EmissionRepository(BaseRepository[Emission]):
         Returns:
             List of records
         """
-        sql = f"""
-        SELECT * FROM {self.table_name} 
-        WHERE date BETWEEN %s AND %s 
-        ORDER BY date
-        """
-        results = self.db.fetchall(sql, [start_date, end_date])
-        return [Emission(**result) for result in results]
-
-    def get_emission_categories(self, date_value: date = None) -> Dict[str, Decimal]:
-        """
-        Get emission amounts by category for a specific date.
-        If no date is provided, returns the latest emission data.
-        
-        Args:
-            date_value: The date to query (optional)
+        # Use cursor directly to get column names
+        with self.db.cursor() as cur:
+            sql = f"""
+            SELECT * FROM {self.table_name}
+            WHERE date BETWEEN %s AND %s
+            ORDER BY date
+            """
+            cur.execute(sql, [start_date, end_date])
             
-        Returns:
-            Dictionary with emission categories and amounts
-        """
-        if date_value:
-            emission = self.get_by_date(date_value)
-        else:
-            emission = self.get_latest()
+            # Get column names from cursor description
+            columns = [desc[0] for desc in cur.description]
             
-        if not emission:
-            return {}
+            # Fetch all results
+            results = cur.fetchall()
             
-        return {
-            'capital_emission': emission.capital_emission,
-            'code_emission': emission.code_emission,
-            'compute_emission': emission.compute_emission,
-            'community_emission': emission.community_emission,
-            'protection_emission': emission.protection_emission,
-            'total_emission': emission.total_emission
-        }
-
-    def get_historical_emissions(self, days: int = 30) -> List[Dict[str, any]]:
-        """
-        Get historical emission data for the last N days.
-        
-        Args:
-            days: Number of days to retrieve
-            
-        Returns:
-            List of emission data dictionaries
-        """
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=days)
-        
-        emissions = self.get_by_date_range(start_date, end_date)
-        
-        return [{
-            'day': emission.day,
-            'date': emission.date.isoformat(),
-            'capital_emission': float(emission.capital_emission),
-            'code_emission': float(emission.code_emission),
-            'compute_emission': float(emission.compute_emission),
-            'community_emission': float(emission.community_emission),
-            'protection_emission': float(emission.protection_emission),
-            'total_emission': float(emission.total_emission),
-            'total_supply': float(emission.total_supply)
-        } for emission in emissions]
-
-    def get_emission_growth_rate(self, period_days: int = 30) -> Dict[str, Tuple[float, float]]:
-        """
-        Calculate the growth rate of emissions over a period for each category.
-        
-        Args:
-            period_days: Number of days to analyze
-            
-        Returns:
-            Dictionary with categories and their (absolute_growth, percentage_growth) tuples
-        """
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=period_days)
-        
-        start_emission = self.get_by_date(start_date)
-        end_emission = self.get_by_date(end_date)
-        
-        if not start_emission or not end_emission:
-            return {}
-        
-        categories = [
-            'capital_emission', 
-            'code_emission', 
-            'compute_emission', 
-            'community_emission', 
-            'protection_emission',
-            'total_emission'
-        ]
-        
-        growth_rates = {}
-        
-        for category in categories:
-            start_value = getattr(start_emission, category)
-            end_value = getattr(end_emission, category)
-            
-            absolute_growth = float(end_value - start_value)
-            percentage_growth = float((end_value - start_value) / start_value * 100) if start_value != 0 else 0
-            
-            growth_rates[category] = (absolute_growth, percentage_growth)
-            
-        return growth_rates
-
-    def save_emission_data(self, emission_data: List[Dict]) -> int:
-        """
-        Save emission data to the database.
-        
-        Args:
-            emission_data: List of emission data records
-            
-        Returns:
-            Number of records inserted/updated
-        """
-        if not emission_data:
-            return 0
-        
-        records = []
-        for record in emission_data:
-            # Convert date string to date object if needed
-            date_obj = record.get('date')
-            if isinstance(date_obj, str):
-                date_obj = datetime.strptime(date_obj, '%Y-%m-%d').date()
-            
-            records.append(Emission(
-                day=record.get('day'),
-                date=date_obj,
-                capital_emission=record.get('capital_emission'),
-                code_emission=record.get('code_emission'),
-                compute_emission=record.get('compute_emission'),
-                community_emission=record.get('community_emission'),
-                protection_emission=record.get('protection_emission'),
-                total_emission=record.get('total_emission'),
-                total_supply=record.get('total_supply')
-            ))
-        
-        # Use bulk insert with ON CONFLICT handling
-        return self.bulk_insert(records)
+            # Convert tuples to dictionaries using column names
+            return [Emission(**dict(zip(columns, result))) for result in results]
 
     def bulk_insert(self, records: List[Emission]) -> int:
         """

@@ -158,43 +158,37 @@ def process_emission_events(emissions_data=None):
         if not emissions_data:
             logger.info("No emissions data provided, attempting to fetch from configured source")
             try:
-                # Check if the CSV file exists
-                csv_file_path = 'data/MASTER MOR EXPLORER - Emissions.csv'
-                if os.path.exists(csv_file_path):
-                    logger.info(f"Reading emissions data from {csv_file_path}")
-                    emissions_data = parse_emission_data(csv_file_path)
+                # Import here to avoid circular imports
+                from helpers.staking_helpers.get_emission_schedule_for_today import get_emissions_data
+
+                # Get emissions data from the configured source
+                emissions_df = get_emissions_data()
+
+                if emissions_df is not None and not emissions_df.empty:
+                    # Convert DataFrame to list of dictionaries
+                    emissions_data = []
+                    for _, row in emissions_df.iterrows():
+                        try:
+                            emission = {
+                                'day': int(row.get('Day', 0)),
+                                'date': row['Date'].date() if hasattr(row['Date'], 'date') else row['Date'],
+                                'capital_emission': Decimal(str(row['Capital Emission'])),
+                                'code_emission': Decimal(str(row['Code Emission'])),
+                                'compute_emission': Decimal(str(row['Compute Emission'])),
+                                'community_emission': Decimal(str(row['Community Emission'])),
+                                'protection_emission': Decimal(str(row['Protection Emission'])),
+                                'total_emission': Decimal(str(row['Total Emission'])),
+                                'total_supply': Decimal(str(row['Total Supply']))
+                            }
+                            emissions_data.append(emission)
+                        except (ValueError, TypeError, KeyError) as e:
+                            logger.error(f"Error parsing row {row}: {str(e)}")
+                            continue
+
+                    logger.info(f"Fetched {len(emissions_data)} emission records from configured source")
                 else:
-                    # Import here to avoid circular imports
-                    from helpers.staking_helpers.get_emission_schedule_for_today import get_emissions_data
-                    
-                    # Get emissions data from the configured source
-                    emissions_df = get_emissions_data()
-                    
-                    if emissions_df is not None and not emissions_df.empty:
-                        # Convert DataFrame to list of dictionaries
-                        emissions_data = []
-                        for _, row in emissions_df.iterrows():
-                            try:
-                                emission = {
-                                    'day': int(row.get('Day', 0)),
-                                    'date': row['Date'].date() if hasattr(row['Date'], 'date') else row['Date'],
-                                    'capital_emission': Decimal(str(row['Capital Emission'])),
-                                    'code_emission': Decimal(str(row['Code Emission'])),
-                                    'compute_emission': Decimal(str(row['Compute Emission'])),
-                                    'community_emission': Decimal(str(row['Community Emission'])),
-                                    'protection_emission': Decimal(str(row['Protection Emission'])),
-                                    'total_emission': Decimal(str(row['Total Emission'])),
-                                    'total_supply': Decimal(str(row['Total Supply']))
-                                }
-                                emissions_data.append(emission)
-                            except (ValueError, TypeError, KeyError) as e:
-                                logger.error(f"Error parsing row {row}: {str(e)}")
-                                continue
-                        
-                        logger.info(f"Fetched {len(emissions_data)} emission records from configured source")
-                    else:
-                        logger.warning("No emission data found in configured source")
-                        return 0
+                    logger.warning("No emission data found in configured source")
+                    return 0
             except Exception as e:
                 logger.error(f"Error fetching emissions data from configured source: {str(e)}")
                 return 0
@@ -211,33 +205,5 @@ def process_emission_events(emissions_data=None):
         logger.error(f"Error updating emissions data: {str(e)}")
         return 0
 
-
-def main():
-    """Main function to run the script."""
-    parser = argparse.ArgumentParser(description='Update emissions data in the database')
-    parser.add_argument('--file', type=str, help='Path to the CSV or TSV file containing emissions data')
-    parser.add_argument('--data', type=str, help='Emissions data as a string')
-    parser.add_argument('--delimiter', type=str, default='\t', help='Delimiter for the data string (default: tab)')
-    
-    args = parser.parse_args()
-    
-    if args.file:
-        emissions_data = parse_emission_data(args.file)
-    elif args.data:
-        emissions_data = parse_emission_data_from_string(args.data, args.delimiter)
-    else:
-        # No specific data source provided, use the default source
-        emissions_data = []
-    
-    count = process_emission_events(emissions_data)
-    
-    if count > 0:
-        logger.info(f"Successfully processed and stored {count} {EVENT_NAME} records")
-        return 0
-    else:
-        logger.error(f"Failed to process {EVENT_NAME} records")
-        return 1
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit()
