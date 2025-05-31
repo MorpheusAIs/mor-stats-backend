@@ -7,14 +7,14 @@ from web3 import AsyncWeb3
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
-from app.models.database_models import RewardSummary
+from app.models.database_models import RewardSummary, UserMultiplier
 from app.repository import RewardSummaryRepository, UserMultiplierRepository
 from helpers.web3_helper import get_block_by_timestamp
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 3
-RETRY_DELAY = 5  # seconds
+MAX_RETRIES = 10
+RETRY_DELAY = 10  # seconds
 BATCH_SIZE = 50
 
 INPUT_TABLE_NAME = "user_multiplier"
@@ -25,32 +25,15 @@ RPC_URL = ETH_RPC_URL
 w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(RPC_URL))
 contract = w3.eth.contract(address=distribution_contract.address, abi=distribution_contract.abi)
 
-def get_user_reward_data():
+def get_user_reward_data() -> list:
     """Get user and pool data from the user_multiplier table using the repository"""
     try:
         # Use the repository to get the data
         repository = UserMultiplierRepository()
-        
-        # Get all records with multiplier not null
-        query = f"""
-        SELECT user_address, pool_id
-        FROM {INPUT_TABLE_NAME}
-        WHERE multiplier IS NOT NULL
-        GROUP BY user_address, pool_id
-        """
-        
-        # Execute the query using the repository's db connection
-        results = repository.db.fetchall(query)
-        
-        records = []
-        for row in results:
-            records.append({
-                'user': row['user_address'],
-                'poolId': row['pool_id']
-            })
-        
-        logger.info(f"Retrieved {len(records)} unique user/pool combinations")
-        return records
+        results = repository.get_all_user_multipliers_grouped()
+
+        logger.info(f"Retrieved {len(results)} unique user/pool combinations")
+        return results
     except Exception as e:
         logger.error(f"Error getting user reward data: {str(e)}")
         raise
@@ -70,22 +53,20 @@ async def get_user_reward_at_block(pool_id, address, block):
             return Decimal(w3.from_wei(reward, 'ether'))
         except Exception as e:
             if 'Too Many Requests' in str(e) and attempt < MAX_RETRIES - 1:
-                logger.warning(f"Rate limit hit, retrying in {RETRY_DELAY} seconds...")
-                await asyncio.sleep(RETRY_DELAY)
-                return None
+                logger.warning(f"Rate limit hit, retrying in {RETRY_DELAY * (attempt + 1)} seconds...")
+                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
             else:
                 logger.error(f"Error getting reward for {address} in pool {pool_id} at block {block}: {str(e)}")
                 return Decimal('0')
-    return None
+    raise
 
 
-async def process_rewards_batch(batch, block_24_hours_ago, block_right_now):
+async def process_rewards_batch(batch : list, block_24_hours_ago, block_right_now) -> list:
     tasks = []
     for record in batch:
-        pool_id = int(record['poolId'])
-        address = w3.to_checksum_address(record['user'])
-        tasks.append(get_user_reward_at_block(pool_id, address, block_right_now))
-        tasks.append(get_user_reward_at_block(pool_id, address, block_24_hours_ago))
+        address = w3.to_checksum_address(record['user_address'])
+        tasks.append(get_user_reward_at_block(record['pool_id'], address, block_right_now))
+        tasks.append(get_user_reward_at_block(record['pool_id'], address, block_24_hours_ago))
 
     results = await asyncio.gather(*tasks)
 
@@ -99,47 +80,40 @@ async def process_rewards_batch(batch, block_24_hours_ago, block_right_now):
         batch_index = i // 2
 
         rewards_data.append({
-            'user_address': batch[batch_index]['user'],
-            'pool_id': int(batch[batch_index]['poolId']),
+            'user_address': batch[batch_index]['user_address'],
+            'pool_id': int(batch[batch_index]['pool_id']),
             'daily_reward': daily_reward,
             'total_reward': current_reward
         })
 
     return rewards_data
 
-def insert_reward_summary_events(summary_data, block_24_hours_ago, latest_block):
+def insert_reward_summary_events(summary_data, block_24_hours_ago, latest_block) -> int:
     """Save the reward summary data to the database using the repository"""
     try:
         repository = RewardSummaryRepository()
         current_time = datetime.datetime.now()
-        
-        reward_summary_events = []
-        for category, value in summary_data.items():
-            reward_summary = RewardSummary(
-                id=None,
-                timestamp=current_time,
-                calculation_block_current=latest_block,
-                calculation_block_past=block_24_hours_ago,
-                category=category,
-                value=value
-            )
-            reward_summary_events.append(reward_summary)
-        
+
+        reward_summary = RewardSummary(
+            id=None,
+            timestamp=current_time,
+            calculation_block_current=latest_block,
+            calculation_block_past=block_24_hours_ago,
+            daily_pool_reward_0=summary_data['Daily Pool 0'],
+            daily_pool_reward_1=summary_data['Daily Pool 1'],
+            daily_reward=summary_data['Daily Combined'],
+            total_reward_pool_0=summary_data['Total Pool 0'],
+            total_reward_pool_1=summary_data['Total Pool 1'],
+            total_reward=summary_data['Total Combined'],
+        )
         # Insert the events and get the ID of the first one
-        repository.bulk_insert(reward_summary_events)
+        result = repository.create(reward_summary)
         
-        # Get the ID of the most recently inserted summary
-        latest_summary = repository.get_latest_by_category(list(summary_data.keys())[0])
-        summary_id = latest_summary.id if latest_summary else None
-        
-        logger.info(f"Saved reward summary with {len(reward_summary_events)} categories")
-        return summary_id
+        logger.info(f"Saved reward summary id {result.id}")
+        return result.id
     except Exception as e:
         logger.error(f"Error saving reward summary: {str(e)}")
         raise
-
-
-
 
 async def process_reward_events():
     try:

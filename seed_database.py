@@ -119,12 +119,14 @@ TABLE_DEFINITIONS = [
             timestamp TIMESTAMP NOT NULL,
             calculation_block_current BIGINT NOT NULL,
             calculation_block_past BIGINT NOT NULL,
-            category varchar(255) NOT NULL,
-            value NUMERIC(36, 18) NOT NULL,
+            daily_pool_reward_0 NUMERIC(36, 18) NOT NULL,
+            daily_pool_reward_1 NUMERIC(36, 18) NOT NULL,
+            daily_reward NUMERIC(36, 18) NOT NULL,
+            total_reward_pool_0 NUMERIC(36, 18) NOT NULL,
+            total_reward_pool_1 NUMERIC(36, 18) NOT NULL,
+            total_reward NUMERIC(36, 18) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        CREATE INDEX IF NOT EXISTS idx_reward_summary_timestamp ON reward_summary (timestamp);
-        CREATE INDEX IF NOT EXISTS idx_reward_summary_category ON reward_summary (category);
     """),
     ("user_staked_events", """
         CREATE TABLE IF NOT EXISTS user_staked_events (
@@ -326,12 +328,10 @@ DATA_MAPPING = [
         "repository_class": UserMultiplierRepository,
         "parser": parse_user_multiplier
     },
-    # {
-    #     "csv_file": "MASTER MOR EXPLORER - RewardSum.csv",
-    #     "table_name": "reward_summary",
-    #     "repository_class": RewardSummaryRepository,
-    #     "parser": parse_reward_summary
-    # },
+    {
+        "table_name": "reward_summary",
+        "repository_class": RewardSummaryRepository,
+    },
     {
         "csv_file": "MASTER MOR EXPLORER - UserStaked.csv",
         "table_name": "user_staked_events",

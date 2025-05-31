@@ -5,7 +5,7 @@ from app.repository.base_repository import BaseRepository
 from app.repository.circulating_supply_repository import CirculatingSupplyRepository
 from app.repository.emission_repository import EmissionRepository
 from app.repository.overplus_bridged_events_repository import OverplusBridgedEventsRepository
-from app.repository.reward_repository import RewardDetailRepository, RewardSummaryRepository
+from app.repository.reward_repository import RewardSummaryRepository
 from app.repository.user_claim_locked_repository import UserClaimLockedRepository
 from app.repository.user_multiplier_repository import UserMultiplierRepository
 from app.repository.user_staked_events_repository import UserStakedEventsRepository
@@ -16,7 +16,6 @@ __all__ = [
     'CirculatingSupplyRepository',
     'EmissionRepository',
     'OverplusBridgedEventsRepository',
-    'RewardDetailRepository',
     'RewardSummaryRepository',
     'UserClaimLockedRepository',
     'UserMultiplierRepository',

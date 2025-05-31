@@ -300,3 +300,26 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
             cursor.execute(sql)
         
         return True
+
+    def get_all_user_multipliers_grouped(self) -> list:
+
+        sql = f"""
+        SELECT user_address, pool_id
+        FROM {self.table_name}
+        WHERE multiplier IS NOT NULL
+        GROUP BY user_address, pool_id
+        """
+
+        with self.db.cursor() as cur:
+            cur.execute(sql)
+
+            columns = [desc[0] for desc in cur.description]
+
+            results = cur.fetchall()
+
+            dict_results = []
+            for result in results:
+                dict_result = dict(zip(columns, result))
+                dict_results.append(dict_result)
+
+            return dict_results

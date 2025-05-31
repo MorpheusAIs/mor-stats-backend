@@ -37,7 +37,7 @@ async def process_blockchain_updates():
 
         # Step 2: Update User Multipliers
         logger.info("Step 2: Updating User Multipliers")
-        await process_user_multiplier_events()
+        # await process_user_multiplier_events()
         logger.info("Step 2 completed successfully")
         time.sleep(5)
 
@@ -48,28 +48,28 @@ async def process_blockchain_updates():
         time.sleep(5)
 
         # Step 4: Update Circulating Supply
-        logger.info("Step 4: Updating Circulating Supply")
-        process_circulating_supply_events()
-        logger.info("Step 4 completed successfully")
-        time.sleep(5)
-
-        # Step 5: Update User Staked Events
-        logger.info("Step 5: Updating User Staked Events")
-        process_user_staked_events()
-        logger.info("Step 5 completed successfully")
-        time.sleep(5)
-
-        # Step 6: Update User Withdrawn Events
-        logger.info("Step 6: Updating User Withdrawn Events")
-        process_user_withdrawn_events()
-        logger.info("Step 6 completed successfully")
-        time.sleep(5)
-
-        # Step 7: Update Overplus Bridged Events
-        logger.info("Step 7: Updating Overplus Bridged Events")
-        process_overplus_bridged_events()
-        logger.info("Step 7 completed successfully")
-        time.sleep(5)
+        # logger.info("Step 4: Updating Circulating Supply")
+        # process_circulating_supply_events()
+        # logger.info("Step 4 completed successfully")
+        # time.sleep(5)
+        #
+        # # Step 5: Update User Staked Events
+        # logger.info("Step 5: Updating User Staked Events")
+        # process_user_staked_events()
+        # logger.info("Step 5 completed successfully")
+        # time.sleep(5)
+        #
+        # # Step 6: Update User Withdrawn Events
+        # logger.info("Step 6: Updating User Withdrawn Events")
+        # process_user_withdrawn_events()
+        # logger.info("Step 6 completed successfully")
+        # time.sleep(5)
+        #
+        # # Step 7: Update Overplus Bridged Events
+        # logger.info("Step 7: Updating Overplus Bridged Events")
+        # process_overplus_bridged_events()
+        # logger.info("Step 7 completed successfully")
+        # time.sleep(5)
 
         # Step 8: Update Emissions Data
         # logger.info("Step 8: Updating Emissions Data")

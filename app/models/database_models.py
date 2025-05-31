@@ -38,17 +38,11 @@ class RewardSummary(BaseModel):
     timestamp: datetime = Field(..., description="Event timestamp")
     calculation_block_current: int = Field(..., description="Current block used for calculation")
     calculation_block_past: int = Field(..., description="Past block used for calculation")
-    category: str = Field(..., description="Reward category")
-    value: Decimal = Field(..., description="Reward value")
-
-
-class RewardDetail(BaseModel):
-    """Model for reward_detail table."""
-    id: Optional[int] = Field(None, description="Primary key")
-    summary_id: int = Field(..., description="Reference to reward_summary table")
-    user_address: str = Field(..., description="User address")
-    pool_id: int = Field(..., description="Pool ID")
-    daily_reward: Decimal = Field(..., description="Daily reward")
+    daily_pool_reward_0: Decimal = Field(..., description="Daily reward Pool 0")
+    daily_pool_reward_1: Decimal = Field(..., description="Daily reward Pool 1")
+    daily_reward: Decimal = Field(..., description="Daily reward Total")
+    total_reward_pool_0: Decimal = Field(..., description="Total reward Pool 0")
+    total_reward_pool_1: Decimal = Field(..., description="Total reward Pool 1")
     total_reward: Decimal = Field(..., description="Total reward")
 
 
