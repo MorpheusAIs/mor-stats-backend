@@ -50,17 +50,14 @@ def process_user_staked_events():
             logger.info("No new blocks to process.")
             return 0
 
-        # Get events in batches
         events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME, BATCH_SIZE))
         logger.info(f"Processing {len(events)} new {EVENT_NAME} events from block {start_block} to {latest_block}")
 
         if events:
-            # Process events
             user_staked_events = []
             for event in events:
-                block_timestamp = web3.eth.get_block(event['blockNumber'])['timestamp']
+                block_timestamp = (web3.eth.get_block(event['blockNumber']))['timestamp']
 
-                # Create UserStakedEvent object
                 user_staked_event = UserStakedEvent(
                     id=None,
                     timestamp=datetime.fromtimestamp(block_timestamp),
@@ -72,7 +69,6 @@ def process_user_staked_events():
                 )
                 user_staked_events.append(user_staked_event)
 
-            # Insert events into database
             inserted_count = insert_user_staked_events(user_staked_events)
 
             logger.info(f"Successfully processed and stored {inserted_count} new events for {EVENT_NAME}")
