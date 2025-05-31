@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from decimal import Decimal
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.db.database import get_db
@@ -58,7 +59,7 @@ def process_overplus_bridged_events():
             return 0
 
         # Get events in batches using the EVENT_NAME constant
-        events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME))
+        events = list(get_events_in_batches(start_block, latest_block, EVENT_NAME, BATCH_SIZE))
         logger.info(f"Processing {len(events)} new {EVENT_NAME} events from block {start_block} to {latest_block}")
 
         if events:
@@ -76,7 +77,7 @@ def process_overplus_bridged_events():
                     timestamp=datetime.fromtimestamp(block_timestamp),
                     transaction_hash=event['transactionHash'].hex(),
                     block_number=event['blockNumber'],
-                    amount=int(event['args'].get('amount', 0)),  # Store raw amount
+                    amount=Decimal(event['args'].get('amount', 0)),  # Store raw amount
                     unique_id=unique_id_hex
                 )
                 overplus_bridged_events.append(overplus_bridged_event)

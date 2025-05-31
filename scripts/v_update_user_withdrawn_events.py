@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from decimal import Decimal
 
 from app.core.config import ETH_RPC_URL, distribution_contract
 from app.models.database_models import UserWithdrawnEvent
@@ -74,7 +75,7 @@ def process_user_withdrawn_events():
                     block_number=event['blockNumber'],
                     pool_id=int(event['args'].get('poolId', 0)),
                     user_address=event['args'].get('user', ''),
-                    amount=int(event['args'].get('amount', 0))  # Store raw amount
+                    amount=Decimal(event['args'].get('amount', 0))  # Store raw amount
                 )
                 user_withdrawn_events.append(user_withdrawn_event)
 

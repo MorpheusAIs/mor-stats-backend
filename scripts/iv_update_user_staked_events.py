@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 
 from app.core.config import distribution_contract, ETH_RPC_URL
-from app.db.database import get_db
 from app.models.database_models import UserStakedEvent
 from app.repository import UserStakedEventsRepository
 from app.web3.web3_wrapper import Web3Provider
