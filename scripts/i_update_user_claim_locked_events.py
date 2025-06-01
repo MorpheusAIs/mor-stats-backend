@@ -45,7 +45,7 @@ def process_user_claim_locked_events():
         
         if events:
             user_claim_locked_events: list[UserClaimLocked] = []
-            for i, event in events:
+            for i, event in enumerate(events):
                 if i % 50 == 0:
                     logger.info(f"Processing record number {i} out of {len(events)}")
                 user_claim_locked = UserClaimLocked(

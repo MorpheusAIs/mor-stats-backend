@@ -426,7 +426,7 @@ def import_data_from_csv(csv_file: str, parser: Callable, repository_class: Type
     
     except Exception as e:
         logger.error(f"Error importing data from {csv_file}: {str(e)}")
-        raise
+        raise e
 
 def create_and_seed_db(seed_enabled=False):
     """
@@ -464,24 +464,40 @@ def create_and_seed_db(seed_enabled=False):
         logger.error(f"Error seeding database: {str(e)}")
         raise
 
+def seed_circulating_supply():
+    try:
+        count = import_data_from_csv(
+            "MASTER MOR EXPLORER - CircSupply.csv",
+            parse_circulating_supply,
+            CirculatingSupplyRepository
+        )
+        logger.info(f"Successfully imported {count} records into circulating_supply table")
+    except Exception as e:
+        logger.error(f"Error importing data for circulating_supply: {str(e)}")
+
 def main():
     """Main function to seed the database."""
 
     parser = argparse.ArgumentParser(description='Create and seed the database.')
-    parser.add_argument('--seed', action='store_true', default=False,
+    parser.add_argument('--seedall', action='store_true', default=False,
                         help='Enable seeding of the database (default: False)')
+    parser.add_argument('--seedcirculating', action='store_true', default=False,
+                        help='Enable seeding circulating supply (default: False)')
     args = parser.parse_args()
     
     try:
-        logger.info(f"Database seeding {'enabled' if args.seed else 'disabled'}")
-        count = create_and_seed_db(seed_enabled=args.seed)
+        logger.info(f"Database seeding {'enabled' if args.seedall else 'disabled'}")
+        count = create_and_seed_db(seed_enabled=args.seedall)
         
-        if args.seed:
+        if args.seedall:
             if count > 0:
                 logger.info(f"Successfully imported {count} total records into the database")
             else:
                 logger.warning("No records were imported. Check the CSV files and logs for errors.")
         else:
+            if args.seedcirculating:
+                seed_circulating_supply()
+                logger.info("Seeding Circulating supply")
             logger.info("Database tables created successfully (seeding was disabled)")
         
         return 0
