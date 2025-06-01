@@ -5,7 +5,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from cron_master_processor import process_blockchain_updates, process_blockchain_updates
+from cron_master_processor import process_blockchain_updates
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,7 +15,6 @@ from app.core.settings import settings
 from app.db.database import DBConfig, init_db
 from app.middleware.error_handler import add_error_handler
 from app.models.responses import DataResponse, HealthCheckResponse, MessageResponse
-# from cron_master_processor import run_update_process
 from helpers.capital_helpers.capital_main import get_capital_metrics
 from helpers.code_helpers.code_main import get_total_weights_and_contributors
 from helpers.code_helpers.get_github_commits_metrics import get_commits_data

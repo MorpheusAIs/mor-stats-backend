@@ -31,9 +31,9 @@ def get_latest_circulating_supply_record():
         else:
             logger.error("No records found in the database")
             return None
-    except Exception as e:
-        logger.error(f"Error getting latest record: {str(e)}")
-        raise
+    except Exception as ex:
+        logger.error(f"Error getting latest record: {str(ex)}")
+        raise ex
 
 def insert_circulating_supply_events(new_data):
     """Save new circulating supply data to the database using the repository"""
@@ -48,7 +48,7 @@ def insert_circulating_supply_events(new_data):
         return total_count
     except Exception as e:
         logger.error(f"Error saving supply data: {str(e)}")
-        raise
+        raise e
 
 
 def get_block_number_by_timestamp(timestamp):
@@ -79,7 +79,7 @@ def process_circulating_supply_events():
         latest_record = get_latest_circulating_supply_record()
         if not latest_record:
             logger.error(f"Cannot update: No baseline record found in the database for {EVENT_NAME}")
-            return None
+            raise RuntimeError(f"Cannot update: No baseline record found in the database for {EVENT_NAME}")
 
         # Extract latest values
         latest_block_timestamp = int(latest_record['block_timestamp_at_that_date'])

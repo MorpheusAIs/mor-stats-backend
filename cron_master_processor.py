@@ -4,8 +4,8 @@ from datetime import datetime
 import traceback
 import time
 
-from app.db.database import get_db, init_db, DBConfig
-from app.core.settings import settings
+from app.cache.cache_manager import clear_cache
+from app.db.database import get_db
 from scripts.i_update_user_claim_locked_events import process_user_claim_locked_events
 from scripts.ii_update_user_multipliers import process_user_multiplier_events
 from scripts.iii_update_total_daily_rewards import process_reward_events
@@ -37,7 +37,7 @@ async def process_blockchain_updates():
 
         # Step 2: Update User Multipliers
         logger.info("Step 2: Updating User Multipliers")
-        # await process_user_multiplier_events()
+        await process_user_multiplier_events()
         logger.info("Step 2 completed successfully")
         time.sleep(5)
 
@@ -83,6 +83,9 @@ async def process_blockchain_updates():
         success_message = (f"Update process completed successfully at {end_time}. "
                            f"Total duration: {duration}")
         logger.info(success_message)
+
+        logger.info("Clearing read cache for new data")
+        clear_cache()
 
     except Exception as e:
         error_message = f"Error in update process: {str(e)}\n{traceback.format_exc()}"

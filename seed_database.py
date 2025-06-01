@@ -4,6 +4,7 @@ Consolidated database seeding script.
 This script handles seeding all tables from CSV files in the data directory.
 It provides a unified approach to database initialization.
 """
+import argparse
 import csv
 import logging
 import os
@@ -427,27 +428,36 @@ def import_data_from_csv(csv_file: str, parser: Callable, repository_class: Type
         logger.error(f"Error importing data from {csv_file}: {str(e)}")
         raise
 
-def seed_database():
-    """Seed the database with data from all CSV files."""
+def create_and_seed_db(seed_enabled=False):
+    """
+    Create database tables and optionally seed them with data from CSV files.
+    
+    Args:
+        seed_enabled: If True, imports data from CSV files into the database tables.
+                     If False, only creates the tables without importing data.
+    
+    Returns:
+        int: The total number of records imported (0 if seeding is disabled)
+    """
     try:
         # Ensure all tables exist
         ensure_tables_exist()
         
-        # Import data from each CSV file
         total_count = 0
-        for mapping in DATA_MAPPING:
-            try:
-                count = import_data_from_csv(
-                    mapping["csv_file"],
-                    mapping["parser"],
-                    mapping["repository_class"]
-                )
-                total_count += count
-                logger.info(f"Successfully imported {count} records into {mapping['table_name']} table")
-            except Exception as e:
-                logger.error(f"Error importing data for {mapping['table_name']}: {str(e)}")
-                continue
-        
+        if seed_enabled:
+            for mapping in DATA_MAPPING:
+                try:
+                    count = import_data_from_csv(
+                        mapping["csv_file"],
+                        mapping["parser"],
+                        mapping["repository_class"]
+                    )
+                    total_count += count
+                    logger.info(f"Successfully imported {count} records into {mapping['table_name']} table")
+                except Exception as e:
+                    logger.error(f"Error importing data for {mapping['table_name']}: {str(e)}")
+                    continue
+
         return total_count
     
     except Exception as e:
@@ -456,15 +466,27 @@ def seed_database():
 
 def main():
     """Main function to seed the database."""
+
+    parser = argparse.ArgumentParser(description='Create and seed the database.')
+    parser.add_argument('--seed', action='store_true', default=False,
+                        help='Enable seeding of the database (default: False)')
+    args = parser.parse_args()
+    
     try:
-        count = seed_database()
-        if count > 0:
-            logger.info(f"Successfully imported {count} total records into the database")
+        logger.info(f"Database seeding {'enabled' if args.seed else 'disabled'}")
+        count = create_and_seed_db(seed_enabled=args.seed)
+        
+        if args.seed:
+            if count > 0:
+                logger.info(f"Successfully imported {count} total records into the database")
+            else:
+                logger.warning("No records were imported. Check the CSV files and logs for errors.")
         else:
-            logger.warning("No records were imported. Check the CSV files and logs for errors.")
+            logger.info("Database tables created successfully (seeding was disabled)")
+        
         return 0
     except Exception as e:
-        logger.error(f"Error seeding database: {str(e)}")
+        logger.error(f"Error {'seeding' if args.seed else 'creating'} database: {str(e)}")
         return 1
 
 if __name__ == "__main__":

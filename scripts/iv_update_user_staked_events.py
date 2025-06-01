@@ -76,10 +76,10 @@ def process_user_staked_events():
             logger.info(f"No new events found for {EVENT_NAME}.")
             return 0
 
-    except Exception as e:
-        logger.error(f"An error occurred in process_events: {str(e)}")
+    except Exception as ex:
+        logger.error(f"An error occurred in process_events: {str(ex)}")
         logger.exception("Exception details:")
-        raise
+        raise ex
 
 if __name__ == "__main__":
     try:

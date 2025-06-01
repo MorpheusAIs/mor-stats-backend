@@ -88,10 +88,10 @@ def process_user_withdrawn_events():
             logger.info(f"No new {EVENT_NAME} events found.")
             return 0
 
-    except Exception as e:
-        logger.error(f"An error occurred in process_user_withdrawn_events: {str(e)}")
+    except Exception as ex:
+        logger.error(f"An error occurred in process_user_withdrawn_events: {str(ex)}")
         logger.exception("Exception details:")
-        raise
+        raise ex
 
 if __name__ == "__main__":
     try:

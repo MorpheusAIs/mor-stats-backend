@@ -121,8 +121,8 @@ async def process_reward_events():
         users = get_user_reward_data()
 
         if not users:
-            logger.warning(f"No users found in the database for {EVENT_NAME}")
-            return
+            logger.error(f"No users found in the database for {EVENT_NAME}")
+            raise RuntimeError(f"No users found in the database for {EVENT_NAME}")
 
         # Get blocks for calculation
         block_24_hours_ago, block_right_now = await get_useful_blocks()

@@ -45,7 +45,9 @@ def process_user_claim_locked_events():
         
         if events:
             user_claim_locked_events: list[UserClaimLocked] = []
-            for event in events:
+            for i, event in events:
+                if i % 50 == 0:
+                    logger.info(f"Processing record number {i} out of {len(events)}")
                 user_claim_locked = UserClaimLocked(
                     id = None,
                     timestamp = datetime.fromtimestamp(web3.eth.get_block(event['blockNumber'])['timestamp']),

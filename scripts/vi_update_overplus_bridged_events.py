@@ -91,10 +91,10 @@ def process_overplus_bridged_events():
             logger.info(f"No new {EVENT_NAME} events found.")
             return 0
 
-    except Exception as e:
-        logger.error(f"An error occurred in process_overplus_bridged_events: {str(e)}")
+    except Exception as ex:
+        logger.error(f"An error occurred in process_overplus_bridged_events: {str(ex)}")
         logger.exception("Exception details:")
-        raise
+        raise ex
 
 
 if __name__ == "__main__":
