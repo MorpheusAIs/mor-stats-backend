@@ -6,8 +6,9 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from cron_master_processor import process_blockchain_updates
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 
 from app.cache.cache_manager import get_cache_item, get_last_cache_update_time, set_cache_item
 from app.core.exceptions import DatabaseError
@@ -406,9 +407,35 @@ async def get_circ_supply_by_chains():
         logger.error(f"Error fetching code in chain-wise supplies: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred")
 
-@app.post("/job/{job_name}/start", status_code=201, response_model=MessageResponse)
+# API Key security scheme
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    """Validate API key for protected endpoints."""
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    expected_api_key = os.getenv("JOB_API_KEY")
+    if not expected_api_key:
+        logger.error("API_KEY environment variable is not set")
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    
+    if api_key != expected_api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    return api_key
+
+@app.post("/job/{job_name}/start", status_code=201, response_model=MessageResponse, dependencies=[Depends(get_api_key)])
 async def start_job(job_name: str):
-    """Start a background job."""
+    """Start a background job. Requires API key authentication."""
     if job_name == "process_blockchain_updates":
         scheduler.add_job(process_blockchain_updates, trigger='date', run_date=datetime.now())
     else:
@@ -434,7 +461,7 @@ async def health_check():
                     var: bool(os.getenv(var)) for var in [
                         'RPC_URL', 'ARB_RPC_URL', 'BASE_RPC_URL', 'ETHERSCAN_API_KEY',
                         'ARBISCAN_API_KEY', 'BASESCAN_API_KEY', 'DUNE_API_KEY',
-                        'DUNE_QUERY_ID', 'GITHUB_API_KEY'
+                        'DUNE_QUERY_ID', 'GITHUB_API_KEY', 'API_KEY'
                     ]
                 }
             }

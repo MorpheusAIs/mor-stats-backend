@@ -29,6 +29,7 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      JOB_API_KEY: ${JOB_API_KEY}
       RPC_URL: ${RPC_URL}
       ARB_RPC_URL: ${ARB_RPC_URL}
       BASE_RPC_URL: ${BASE_RPC_URL}
