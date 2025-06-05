@@ -1,21 +1,16 @@
-import json
 from collections import OrderedDict
 from datetime import datetime
 import pandas as pd
-from sheets_config.google_utils import read_sheet_to_dataframe
-from app.core.config import EMISSIONS_SHEET_NAME
 import logging
+
+from helpers.staking_helpers.get_emission_schedule_for_today import get_emissions_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def get_total_supply_from_emissions_df():
-    try:
-        emissions_df = read_sheet_to_dataframe(EMISSIONS_SHEET_NAME)
-    except Exception as e:
-        logger.error(f"Error reading emissions sheet: {str(e)}")
-        return OrderedDict()  # Return empty OrderedDict if sheet read fails
+    emissions_df = get_emissions_data()
 
     # Ensure the DataFrame has the required columns
     required_columns = ['Date', 'Total Supply']

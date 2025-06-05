@@ -5,18 +5,110 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 import requests
-from app.core.config import (distribution_contract, EMISSIONS_SHEET_NAME,
-                             USER_MULTIPLIER_SHEET_NAME, REWARD_SUM_SHEET_NAME)
+from app.core.config import distribution_contract
+from app.repository import UserMultiplierRepository, RewardSummaryRepository
 from helpers.staking_helpers.get_emission_schedule_for_today import read_emission_schedule
-from sheets_config.google_utils import read_sheet_to_dataframe
-
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-def get_dataframe_from_sheet_name(sheet_name):
-    df = read_sheet_to_dataframe(sheet_name)
+def get_repository_data_as_dataframe(repository_class, table_name):
+    """
+    Get data from a repository and convert it to a DataFrame.
+    
+    Args:
+        repository_class: The repository class to use
+        table_name: The table name (for logging purposes)
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    try:
+        # Create repository instance
+        repo = repository_class()
+        
+        # Get all records (with a high limit to ensure we get everything)
+        records = repo.get_all(limit=100000)
+        
+        # Convert to DataFrame
+        if records:
+            # Convert Pydantic models to dictionaries
+            data = [record.model_dump() for record in records]
+            df = pd.DataFrame(data)
+            logger.info(f"Successfully loaded {len(df)} records from {table_name}")
+            return df
+        else:
+            logger.warning(f"No records found in {table_name}")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error reading from {table_name}: {str(e)}")
+        return pd.DataFrame()
+
+
+def get_user_multiplier_dataframe():
+    """
+    Get a DataFrame from the repository.
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    df = get_repository_data_as_dataframe(UserMultiplierRepository, "user_multiplier")
+    
+    # Rename columns to match the expected format
+    if not df.empty:
+        df = df.rename(columns={
+            'timestamp': 'Timestamp',
+            'transaction_hash': 'TransactionHash',
+            'block_number': 'BlockNumber',
+            'pool_id': 'poolId',
+            'user_address': 'user',
+            'multiplier': 'multiplier',
+            'user_claim_locked_start': 'claimLockStart',
+            'user_claim_locked_end': 'claimLockEnd'
+        })
+        
+        # Add missing columns that might be expected
+        if 'claimLockStart' not in df.columns:
+            df['claimLockStart'] = 0
+        if 'claimLockEnd' not in df.columns:
+            df['claimLockEnd'] = 0
+            
+        # Try to get claim lock data from the blockchain for each user
+        try:
+            for i, row in df.iterrows():
+                logger.debug(f"row:\n{str(row)}")
+                user = row['user']
+                pool_id = row['poolId']
+                try:
+                    user_data = distribution_contract.functions.usersData(user, pool_id).call()
+                    logger.debug(f"contract user data {str(user_data)}")
+                    df.at[i, 'claimLockStart'] = user_data[4]  # index 4 is claimLockStart
+                    df.at[i, 'claimLockEnd'] = user_data[5]    # index 5 is claimLockEnd
+                except Exception as e:
+                    logger.warning(f"Could not get claim lock data for user {user} in pool {pool_id}: {str(e)}")
+                
+        except Exception as e:
+            logger.error(f"Error getting claim lock data: {str(e)}")
+            
+    return df
+
+def get_reward_summary_dataframe():
+    """
+    Get a DataFrame from the repository.
+        
+    Returns:
+        DataFrame with the repository data
+    """
+    df = get_repository_data_as_dataframe(RewardSummaryRepository, "reward_summary")
+        
+        # Rename columns to match the expected format
+    if not df.empty:
+        df = df.rename(columns={
+            'category': 'Category',
+            'value': 'Value'
+        })
+        
     return df
 
 
@@ -24,7 +116,7 @@ def get_todays_capital_emission():
     mor_daily_emission = 0
 
     today = datetime.today()
-    emissions_data = read_emission_schedule(today, EMISSIONS_SHEET_NAME)
+    emissions_data = read_emission_schedule(today)
 
     mor_daily_emission = float(emissions_data['new_emissions']['Capital Emission'])
 
@@ -62,7 +154,7 @@ def is_valid_stake(row):
 
 
 def analyze_mor_stakers():
-    df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+    df = get_user_multiplier_dataframe()
 
     stakers_by_pool = {0: set(), 1: set()}
     stakers_by_pool_and_date = defaultdict(lambda: defaultdict(set))
@@ -143,7 +235,7 @@ def analyze_mor_stakers():
 
 
 def calculate_average_multipliers():
-    df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+    df = get_user_multiplier_dataframe()
 
     try:
         # Filter valid stakes
@@ -158,13 +250,13 @@ def calculate_average_multipliers():
         average_multiplier = total_multiplier / total_count if total_count > 0 else Decimal('0')
 
         # Calculate average for capital pool (poolId = 0)
-        capital_df = valid_df[valid_df['poolId'] == '0']
+        capital_df = valid_df[valid_df['poolId'] == 0]
         capital_multiplier = capital_df['multiplier'].sum()
         capital_count = len(capital_df)
         average_capital_multiplier = capital_multiplier / capital_count if capital_count > 0 else Decimal('0')
 
         # Calculate average for code pool (poolId = 1)
-        code_df = valid_df[valid_df['poolId'] == '1']
+        code_df = valid_df[valid_df['poolId'] == 1]
         code_multiplier = code_df['multiplier'].sum()
         code_count = len(code_df)
         average_code_multiplier = code_multiplier / code_count if code_count > 0 else Decimal('0')
@@ -184,8 +276,8 @@ def calculate_average_multipliers():
 
 def calculate_pool_rewards_summary():
     try:
-        # Fetch data from RewardSum worksheet
-        df = get_dataframe_from_sheet_name(REWARD_SUM_SHEET_NAME)
+        # Fetch data from reward_summary table
+        df = get_reward_summary_dataframe()
 
         # Initialize the pool_rewards dictionary
         pool_rewards = defaultdict(lambda: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0})
@@ -204,7 +296,7 @@ def calculate_pool_rewards_summary():
             elif category == 'Total Pool 1':
                 pool_rewards[1]['total_current_user_reward_sum'] = abs(value)
 
-        logger.info("Successfully calculated pool rewards summary from RewardSum worksheet")
+        logger.info("Successfully calculated pool rewards summary from reward_summary table")
         return dict(pool_rewards)  # Convert defaultdict to regular dict
 
     except Exception as e:
@@ -213,7 +305,7 @@ def calculate_pool_rewards_summary():
 
 
 def get_wallet_stake_info():
-    df = get_dataframe_from_sheet_name(USER_MULTIPLIER_SHEET_NAME)
+    df = get_user_multiplier_dataframe()
 
     wallet_info = {
         'combined': {},
@@ -352,7 +444,7 @@ async def get_analyze_mor_master_dict():
     multiplier_analysis = calculate_average_multipliers()
     stakereward_analysis = calculate_pool_rewards_summary()
     today = datetime.today()
-    emissionreward_analysis = read_emission_schedule(today, EMISSIONS_SHEET_NAME)
+    emissionreward_analysis = read_emission_schedule(today)
 
     # Convert date objects to strings
     staker_analysis['daily_unique_stakers'] = {
@@ -388,7 +480,5 @@ async def get_analyze_mor_master_dict():
         "stakereward_analysis": {str(k): v for k, v in stakereward_analysis.items()},
         "emissionreward_analysis": emissionreward_analysis
     }
-
-    # print(json.dumps(staking_metrics, indent=4))
 
     return staking_metrics

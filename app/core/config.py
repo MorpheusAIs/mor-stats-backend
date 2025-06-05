@@ -43,14 +43,6 @@ web3 = Web3(Web3.HTTPProvider(ETH_RPC_URL))
 web3_arb = Web3(Web3.HTTPProvider(ARB_RPC_URL))
 web3_base = Web3(Web3.HTTPProvider(BASE_RPC_URL))
 
-EMISSIONS_SHEET_NAME = "Emissions"
-USER_MULTIPLIER_SHEET_NAME = "UserMultiplier"
-REWARD_SUM_SHEET_NAME = "RewardSum"
-CIRC_SUPPLY_SHEET_NAME = "CircSupply"
-USER_STAKED_SHEET_NAME = "UserStaked"
-USER_WITHDRAWN_SHEET_NAME = "UserWithdrawn"
-OVERPLUS_BRIDGED_SHEET_NAME = "OverplusBridged"
-
 COINGECKO_HISTORICAL_PRICES = (f"https://api.coingecko.com/api/v3/coins/morpheusai/contract/"
                                f"{MOR_ARBITRUM_ADDRESS}/market_chart?"
                                f"vs_currency=usd&days={PRICES_AND_VOLUME_DATA_DAYS}")

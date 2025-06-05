@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    env_file: ../.env
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+      start_period: 80s
+
+  mor-stats:
+    container_name: mor-stats
+    env_file: ../.env
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JOB_API_KEY: ${JOB_API_KEY}
+      RPC_URL: ${RPC_URL}
+      ARB_RPC_URL: ${ARB_RPC_URL}
+      BASE_RPC_URL: ${BASE_RPC_URL}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
+      ARBISCAN_API_KEY: ${ARBISCAN_API_KEY}
+      BASESCAN_API_KEY: ${BASESCAN_API_KEY}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
+      DUNE_API_KEY: ${DUNE_API_KEY}
+      DUNE_QUERY_ID: ${DUNE_QUERY_ID}
+      GITHUB_API_KEY: ${GITHUB_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
