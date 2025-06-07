@@ -15,7 +15,6 @@
     DUNE_API_KEY=
     DUNE_QUERY_ID=
     GITHUB_API_KEY=
-    SLACK_URL=
     DB_HOST=
     DB_NAME=
     DB_USER=
@@ -63,7 +62,6 @@ Currently, resources in Azure are created and managed manually with the pipeline
 ```angular2html
 RPC_URL=
 ETHERSCAN_API_KEY=
-SLACK_URL=
 ```
 
 2) `pip install -r "requirements.txt"`

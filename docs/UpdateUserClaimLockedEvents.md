@@ -51,7 +51,6 @@ This script is designed to track and process `UserClaimLocked` events from an Et
 
 - The main execution code is commented out (`if __name__ == "__main__"`)
 - Functions for uploading data to Google Sheets are commented out
-- There's a commented-out reference to Slack notifications for operation status reporting
 
 ## Data Flow
 1. Download existing data from Google Sheets

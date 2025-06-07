@@ -71,7 +71,6 @@ This script tracks and processes `OverplusBridged` events from an Ethereum block
    - Cleans up temporary files
 
 4. **Notification**
-   - Includes (currently commented-out) Slack notification functionality
    - Logs key actions and errors for monitoring
 
 ## Specific Features
