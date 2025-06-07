@@ -35,7 +35,6 @@ This script calculates and tracks daily and total user rewards from an Ethereum 
    - Downloads input data from "UserMultiplier" sheet
    - Uploads summary results to "RewardSum" sheet
    - Clears existing data before uploading new records
-   - Sends Slack notifications about operation status
 
 ## Technical Requirements
 
@@ -47,7 +46,6 @@ This script calculates and tracks daily and total user rewards from an Ethereum 
    - `web3`: For Ethereum blockchain interaction (AsyncWeb3 variant)
    - Custom modules:
      - `configuration.config`: For RPC URL, contract information, API keys, and spreadsheet ID
-     - `sheet_config.google_utils`: For Google Sheets operations and Slack notifications
 
 2. **API Requirements**
    - Ethereum RPC endpoint for blockchain interaction
@@ -57,7 +55,6 @@ This script calculates and tracks daily and total user rewards from an Ethereum 
 3. **Error Handling**
    - Retry mechanism for rate-limited API calls (maximum 3 attempts with 5-second delay)
    - Comprehensive logging
-   - Error notifications via Slack
    - Temporary file cleanup even if errors occur
 
 ## Implementation Details

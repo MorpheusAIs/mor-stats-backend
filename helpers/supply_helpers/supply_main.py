@@ -301,7 +301,6 @@ async def get_mor_holders():
     except DuneError as e:
         error_message = f"API Limit hit for Dune. Please rotate environment variables. Error: {str(e)}"
         logger.exception(f"An error occurred in get_mor_holders: {str(e)}")
-        slack_notification(error_message)
         return None
     except Exception as e:
         logger.exception(f"An error occurred in get_mor_holders: {str(e)}")

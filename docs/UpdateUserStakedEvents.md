@@ -72,7 +72,6 @@ This script tracks and processes `UserStaked` events from an Ethereum blockchain
    - Cleans up temporary files
 
 4. **Notification**
-   - Includes (currently commented-out) Slack notification functionality
    - Logs key actions and errors for monitoring
 
 ## Operational Notes
