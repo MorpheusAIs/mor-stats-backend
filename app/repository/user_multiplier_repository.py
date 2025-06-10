@@ -293,7 +293,7 @@ class UserMultiplierRepository(BaseRepository[UserMultiplier]):
     
     def clean_table(self) -> bool:
         sql = f"""
-        TRUNCATE TABLE {self.table_name} RESTART IDENTITY
+        TRUNCATE TABLE {self.table_name}
         """
 
         with self.db.transaction() as cursor:

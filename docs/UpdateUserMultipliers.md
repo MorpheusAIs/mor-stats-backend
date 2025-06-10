@@ -26,7 +26,6 @@ This script processes blockchain data to calculate and record user multipliers f
    - Downloads input data from "UserClaimLocked" sheet
    - Uploads results to "UserMultiplier" sheet
    - Clears existing data before uploading new records
-   - Sends Slack notifications about operation status
 
 ## Technical Requirements
 
@@ -38,7 +37,6 @@ This script processes blockchain data to calculate and record user multipliers f
    - `decimal`: For precise handling of large numbers
    - Custom modules:
      - `configuration.config`: For RPC URL, contract information, and spreadsheet ID
-     - `sheet_config.google_utils`: For Google Sheets operations and Slack notifications
 
 2. **Configuration Requirements**
    - Ethereum RPC URL (`ETH_RPC_URL`)
@@ -49,7 +47,6 @@ This script processes blockchain data to calculate and record user multipliers f
 3. **Error Handling**
    - Retry mechanism for rate-limited API calls (maximum 3 attempts)
    - Comprehensive error logging
-   - Error notifications via Slack
    - Temporary file cleanup in the finally block
 
 ## Implementation Details

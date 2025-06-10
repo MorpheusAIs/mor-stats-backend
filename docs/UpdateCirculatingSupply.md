@@ -43,7 +43,6 @@ This script tracks and updates the circulating supply of a cryptocurrency token 
 2. **Error Handling**
    - Catches and logs blockchain-related exceptions like `BlockNotFound`
    - Implements comprehensive error logging throughout the process
-   - Provides operational notifications via Slack
    - Ensures database transaction integrity
 
 ## Data Structure

@@ -34,10 +34,7 @@ ARBISCAN_API_KEY = os.getenv("ARBISCAN_API_KEY")
 BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY")
 DUNE_API_KEY = os.getenv("DUNE_API_KEY")
 DUNE_QUERY_ID = os.getenv("DUNE_QUERY_ID")
-SLACK_URL = os.getenv("SLACK_URL")
 GITHUB_API_KEY = os.getenv("GITHUB_API_KEY")
-
-NOTIFICATION_CHANNEL = "slack-example-channel"
 
 web3 = Web3(Web3.HTTPProvider(ETH_RPC_URL))
 web3_arb = Web3(Web3.HTTPProvider(ARB_RPC_URL))
