@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
         # Set up scheduler
         try:
             logger.info("Setting up scheduler")
-            scheduler.add_job(update_read_cache_task, CronTrigger(hour='*/6'))
+            scheduler.add_job(update_read_cache_task, CronTrigger(minute='*/30',hour='*/8'))
             scheduler.add_job(process_blockchain_updates, CronTrigger(hour='*/12'))
             scheduler.start()
         except Exception as scheduler_error:

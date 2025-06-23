@@ -277,9 +277,9 @@ class Database:
             bool: True if the database is healthy, False otherwise
         """
         try:
-            result = self.fetchone("SELECT 1")
+            result = self.fetchone("SELECT current_user, current_role")
             logger.info(f'db health result: {str(result)}')
-            return result is not None and result[0] == 1
+            return result is not None
         except Exception as e:
             logger.error(f"Database health check failed: {str(e)}")
             return False

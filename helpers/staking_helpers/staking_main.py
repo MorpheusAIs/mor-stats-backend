@@ -115,10 +115,18 @@ def get_reward_summary_dataframe():
 def get_todays_capital_emission():
     mor_daily_emission = 0
 
-    today = datetime.today()
-    emissions_data = read_emission_schedule(today)
-
-    mor_daily_emission = float(emissions_data['new_emissions']['Capital Emission'])
+    try:
+        today = datetime.today()
+        emissions_data = read_emission_schedule(today)
+        
+        # Check if the required data exists
+        if emissions_data and 'new_emissions' in emissions_data and 'Capital Emission' in emissions_data['new_emissions']:
+            mor_daily_emission = float(emissions_data['new_emissions']['Capital Emission'])
+        else:
+            logger.warning("Missing emission data for capital emission calculation")
+    except Exception as e:
+        logger.error(f"Error getting today's capital emission: {str(e)}")
+        # Return default value of 0 in case of error
 
     return mor_daily_emission
 
@@ -155,6 +163,20 @@ def is_valid_stake(row):
 
 def analyze_mor_stakers():
     df = get_user_multiplier_dataframe()
+    
+    # Check if DataFrame is empty
+    if df.empty:
+        logger.warning("Empty user multiplier DataFrame, cannot analyze MOR stakers")
+        # Return default empty results
+        return {
+            'total_unique_stakers': {'pool_0': 0, 'pool_1': 0, 'combined': 0},
+            'daily_unique_stakers': {},
+            'average_stake_time': {0: str(timedelta()), 1: str(timedelta())},
+            'combined_average_stake_time': str(timedelta()),
+            'total_stakes': {0: 0, 1: 0},
+            'prices': {"MOR": None, "stETH": None},
+            'emissionToday': 0
+        }
 
     stakers_by_pool = {0: set(), 1: set()}
     stakers_by_pool_and_date = defaultdict(lambda: defaultdict(set))
@@ -236,10 +258,29 @@ def analyze_mor_stakers():
 
 def calculate_average_multipliers():
     df = get_user_multiplier_dataframe()
+    
+    # Check if DataFrame is empty
+    if df.empty:
+        logger.warning("Empty user multiplier DataFrame, cannot calculate average multipliers")
+        # Return default values
+        return {
+            'overall_average': Decimal('0'),
+            'capital_average': Decimal('0'),
+            'code_average': Decimal('0')
+        }
 
     try:
         # Filter valid stakes
         valid_df = df[df.apply(is_valid_stake, axis=1)]
+        
+        # Check if valid_df is empty after filtering
+        if valid_df.empty:
+            logger.warning("No valid stakes found in user multiplier DataFrame")
+            return {
+                'overall_average': Decimal('0'),
+                'capital_average': Decimal('0'),
+                'code_average': Decimal('0')
+            }
 
         # Convert multiplier from wei to whole units
         valid_df['multiplier'] = valid_df['multiplier'].apply(lambda x: Decimal(x) / Decimal('1e18'))
@@ -271,13 +312,27 @@ def calculate_average_multipliers():
 
     except Exception as e:
         logger.error(f"Unexpected error when calculating average multipliers: {str(e)}")
-        raise
+        # Return default values instead of raising exception
+        return {
+            'overall_average': Decimal('0'),
+            'capital_average': Decimal('0'),
+            'code_average': Decimal('0')
+        }
 
 
 def calculate_pool_rewards_summary():
     try:
         # Fetch data from reward_summary table
         df = get_reward_summary_dataframe()
+        
+        # Check if DataFrame is empty
+        if df.empty:
+            logger.warning("Empty reward summary DataFrame, cannot calculate pool rewards")
+            # Return default empty dictionary
+            return {
+                0: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0},
+                1: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0}
+            }
 
         # Initialize the pool_rewards dictionary
         pool_rewards = defaultdict(lambda: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0})
@@ -301,17 +356,40 @@ def calculate_pool_rewards_summary():
 
     except Exception as e:
         logger.error(f"Error calculating pool rewards summary: {str(e)}")
-        raise
+        # Return default values instead of raising exception
+        return {
+            0: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0},
+            1: {'daily_reward_sum': 0, 'total_current_user_reward_sum': 0}
+        }
 
 
 def get_wallet_stake_info():
     df = get_user_multiplier_dataframe()
-
+    
     wallet_info = {
         'combined': {},
         'capital': {},
         'code': {}
     }
+    
+    # Check if DataFrame is empty
+    if df.empty:
+        logger.warning("Empty user multiplier DataFrame, cannot get wallet stake info")
+        # Return empty result structure
+        return {
+            "combined": {
+                "stake_time": {"ranges": [], "frequencies": []},
+                "power_multiplier": {"ranges": [], "frequencies": []}
+            },
+            "capital": {
+                "stake_time": {"ranges": [], "frequencies": []},
+                "power_multiplier": {"ranges": [], "frequencies": []}
+            },
+            "code": {
+                "stake_time": {"ranges": [], "frequencies": []},
+                "power_multiplier": {"ranges": [], "frequencies": []}
+            }
+        }
 
     for _, row in df.iterrows():
         if not is_valid_stake(row):
@@ -414,71 +492,136 @@ def calculate_mor_rewards(mor_daily_emission, staking_period_days, mor_price, et
 
 
 def give_more_reward_response():
-    mor_daily_emission = get_todays_capital_emission()
+    try:
+        mor_daily_emission = get_todays_capital_emission()
 
-    staking_periods = [0, 365, 730, 1095, 1460, 1825, 2190]  # 0, 1 year, 2 years, 3 years, 4 years, 5 years, 6 years
+        staking_periods = [0, 365, 730, 1095, 1460, 1825, 2190]  # 0, 1 year, 2 years, 3 years, 4 years, 5 years, 6 years
 
-    mor_price = get_crypto_price("morpheusai")
-    eth_price = get_crypto_price("staked-ether")  # stETH address
+        mor_price = get_crypto_price("morpheusai")
+        eth_price = get_crypto_price("staked-ether")  # stETH address
+        
+        # Check if prices are available
+        if mor_price is None or eth_price is None:
+            logger.warning(f"Missing price data: MOR price = {mor_price}, ETH price = {eth_price}")
+            # Return empty structure if prices are not available
+            return {
+                "apy_per_steth": [{"staking_period": period, "apy": "0.00%"} for period in staking_periods],
+                "daily_mor_rewards_per_steth": [{"staking_period": period, "daily_mor_rewards": "0.000000"} for period in staking_periods]
+            }
 
-    rewards_data = {
-        "apy_per_steth": [],
-        "daily_mor_rewards_per_steth": []
-    }
+        rewards_data = {
+            "apy_per_steth": [],
+            "daily_mor_rewards_per_steth": []
+        }
 
-    for period in staking_periods:
-        apy, daily_mor_rewards = calculate_mor_rewards(mor_daily_emission, period, mor_price, eth_price)
-        rewards_data["apy_per_steth"].append({
-            "staking_period": period,
-            "apy": f"{apy:.2%}"
-        })
-        rewards_data["daily_mor_rewards_per_steth"].append({
-            "staking_period": period,
-            "daily_mor_rewards": f"{daily_mor_rewards:.6f}"
-        })
-    return rewards_data
+        for period in staking_periods:
+            try:
+                apy, daily_mor_rewards = calculate_mor_rewards(mor_daily_emission, period, mor_price, eth_price)
+                rewards_data["apy_per_steth"].append({
+                    "staking_period": period,
+                    "apy": f"{apy:.2%}"
+                })
+                rewards_data["daily_mor_rewards_per_steth"].append({
+                    "staking_period": period,
+                    "daily_mor_rewards": f"{daily_mor_rewards:.6f}"
+                })
+            except Exception as e:
+                logger.error(f"Error calculating rewards for period {period}: {str(e)}")
+                # Add default values for this period
+                rewards_data["apy_per_steth"].append({
+                    "staking_period": period,
+                    "apy": "0.00%"
+                })
+                rewards_data["daily_mor_rewards_per_steth"].append({
+                    "staking_period": period,
+                    "daily_mor_rewards": "0.000000"
+                })
+                
+        return rewards_data
+        
+    except Exception as e:
+        logger.error(f"Error in give_more_reward_response: {str(e)}")
+        # Return default empty structure
+        return {
+            "apy_per_steth": [],
+            "daily_mor_rewards_per_steth": []
+        }
 
 
 async def get_analyze_mor_master_dict():
-    staker_analysis = analyze_mor_stakers()
-    multiplier_analysis = calculate_average_multipliers()
-    stakereward_analysis = calculate_pool_rewards_summary()
-    today = datetime.today()
-    emissionreward_analysis = read_emission_schedule(today)
+    try:
+        staker_analysis = analyze_mor_stakers()
+        multiplier_analysis = calculate_average_multipliers()
+        
+        try:
+            stakereward_analysis = calculate_pool_rewards_summary()
+        except Exception as e:
+            logger.error(f"Error calculating pool rewards summary: {str(e)}")
+            stakereward_analysis = {}
+            
+        today = datetime.today()
+        
+        try:
+            emissionreward_analysis = read_emission_schedule(today)
+        except Exception as e:
+            logger.error(f"Error reading emission schedule: {str(e)}")
+            emissionreward_analysis = {'new_emissions': {}, 'total_emissions': {}}
 
-    # Convert date objects to strings
-    staker_analysis['daily_unique_stakers'] = {
-        k.isoformat() if isinstance(k, date) else k: v
-        for k, v in staker_analysis['daily_unique_stakers'].items()
-    }
+        # Convert date objects to strings
+        staker_analysis['daily_unique_stakers'] = {
+            k.isoformat() if isinstance(k, date) else k: v
+            for k, v in staker_analysis['daily_unique_stakers'].items()
+        }
 
-    # Convert timedelta objects to string representations
-    for pool_id, time_delta in staker_analysis['average_stake_time'].items():
-        staker_analysis['average_stake_time'][pool_id] = str(time_delta)
-    staker_analysis['combined_average_stake_time'] = str(staker_analysis['combined_average_stake_time'])
+        # Convert timedelta objects to string representations
+        for pool_id, time_delta in staker_analysis['average_stake_time'].items():
+            staker_analysis['average_stake_time'][pool_id] = str(time_delta)
+        staker_analysis['combined_average_stake_time'] = str(staker_analysis['combined_average_stake_time'])
 
-    # Convert numpy types to Python native types
-    def convert_np(obj):
-        if isinstance(obj, np.generic):
-            return obj.item()
-        elif isinstance(obj, dict):
-            return {k: convert_np(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_np(i) for i in obj]
-        return obj
+        # Convert numpy types to Python native types
+        def convert_np(obj):
+            if isinstance(obj, np.generic):
+                return obj.item()
+            elif isinstance(obj, dict):
+                return {k: convert_np(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_np(i) for i in obj]
+            return obj
 
-    emissionreward_analysis = convert_np(emissionreward_analysis)
+        emissionreward_analysis = convert_np(emissionreward_analysis)
 
-    # Cache the staking analysis results
-    staking_metrics = {
-        "staker_analysis": staker_analysis,
-        "multiplier_analysis": {
-            "overall_average": float(multiplier_analysis['overall_average']),
-            "capital_average": float(multiplier_analysis['capital_average']),
-            "code_average": float(multiplier_analysis['code_average'])
-        },
-        "stakereward_analysis": {str(k): v for k, v in stakereward_analysis.items()},
-        "emissionreward_analysis": emissionreward_analysis
-    }
+        # Cache the staking analysis results
+        staking_metrics = {
+            "staker_analysis": staker_analysis,
+            "multiplier_analysis": {
+                "overall_average": float(multiplier_analysis['overall_average']),
+                "capital_average": float(multiplier_analysis['capital_average']),
+                "code_average": float(multiplier_analysis['code_average'])
+            },
+            "stakereward_analysis": {str(k): v for k, v in stakereward_analysis.items()},
+            "emissionreward_analysis": emissionreward_analysis
+        }
 
-    return staking_metrics
+        return staking_metrics
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in get_analyze_mor_master_dict: {str(e)}")
+        # Return a minimal valid structure to prevent further errors
+        return {
+            "staker_analysis": {
+                'total_unique_stakers': {'pool_0': 0, 'pool_1': 0, 'combined': 0},
+                'daily_unique_stakers': {},
+                'average_stake_time': {'0': '0:00:00', '1': '0:00:00'},
+                'combined_average_stake_time': '0:00:00',
+                'total_stakes': {'0': 0, '1': 0},
+                'prices': {"MOR": None, "stETH": None},
+                'emissionToday': 0
+            },
+            "multiplier_analysis": {
+                "overall_average": 0.0,
+                "capital_average": 0.0,
+                "code_average": 0.0
+            },
+            "stakereward_analysis": {},
+            "emissionreward_analysis": {'new_emissions': {}, 'total_emissions': {}}
+        }

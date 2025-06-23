@@ -37,10 +37,14 @@ def get_emissions_data() -> DataFrame:
             emissions_df = pd.DataFrame(emissions_data)
             logger.info(f"Retrieved {len(emissions)} emission records from repository")
             return emissions_df
+        else:
+            logger.warning("No emission records found in repository, returning empty DataFrame")
+            return pd.DataFrame()
             
     except Exception as e:
         logger.error(f"Error reading emissions data: {str(e)}")
-        raise
+        # Return empty DataFrame instead of raising exception
+        return pd.DataFrame()
 
 def read_emission_schedule(today_date: datetime) -> Dict:
     """
@@ -53,8 +57,12 @@ def read_emission_schedule(today_date: datetime) -> Dict:
     Dict: Dictionary containing processed emission data
     """
     try:
-
         emissions_df = get_emissions_data()
+        
+        # Check if DataFrame is empty before processing
+        if emissions_df.empty:
+            logger.warning("Empty emissions DataFrame returned, cannot process emission schedule")
+            return {'new_emissions': {}, 'total_emissions': {}}
 
         emissions_df = emissions_df.dropna(axis=1, how='all')  # Remove empty columns
 
